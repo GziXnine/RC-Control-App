@@ -1,3 +1,5 @@
+/** @format */
+
 export type RobotMode = "MANUAL" | "AUTO";
 
 export type PriorityClass = "STOP" | "MODE" | "MOTOR" | "SERVO" | "TUNING";

@@ -1,3 +1,5 @@
+/** @format */
+
 import { MotorCommand, RobotMode, Telemetry } from "../types/protocol";
 
 export interface CommandAck {
@@ -78,7 +80,7 @@ export function parseTelemetryFrame(frame: string): Telemetry | null {
     servo1: toNumber(fields[7] ?? "0"),
     servo2: toNumber(fields[8] ?? "0"),
     servo3: toNumber(fields[9] ?? "0"),
-    stopLatched: toNumber(fields[10] ?? "0") === 1
+    stopLatched: toNumber(fields[10] ?? "0") === 1,
   };
 }
 
@@ -88,14 +90,14 @@ export function parseCommandAckFrame(frame: string): CommandAck | null {
   if (normalized.startsWith("ACK:")) {
     return {
       accepted: true,
-      frame: normalized.slice(4)
+      frame: normalized.slice(4),
     };
   }
 
   if (normalized.startsWith("NACK:")) {
     return {
       accepted: false,
-      frame: normalized.slice(5)
+      frame: normalized.slice(5),
     };
   }
 

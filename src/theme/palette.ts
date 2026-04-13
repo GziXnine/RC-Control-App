@@ -1,3 +1,5 @@
+/** @format */
+
 export const palette = {
   shell: "#1a1d1f",
   shellEdge: "#3a3f45",
@@ -18,5 +20,5 @@ export const palette = {
   textSecondary: "#bfc8d2",
   frameBorder: "#4f5967",
   greenLed: "#8cf78a",
-  greenLedOff: "#34503c"
+  greenLedOff: "#34503c",
 };

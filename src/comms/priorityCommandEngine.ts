@@ -1,9 +1,11 @@
+/** @format */
+
 import {
   buildModeFrame,
   buildMotorFrame,
   buildServoFrame,
   buildStopFrame,
-  buildTuningFrame
+  buildTuningFrame,
 } from "../protocol/frames";
 import { MotorCommand, PriorityClass, RobotMode } from "../types/protocol";
 
@@ -15,7 +17,10 @@ interface EngineOptions {
   maxRetries?: number;
   onError?: (error: unknown) => void;
   onFrameSent?: (frame: string) => void;
-  onFrameDropped?: (frame: string, reason: "timeout" | "nack" | "transport") => void;
+  onFrameDropped?: (
+    frame: string,
+    reason: "timeout" | "nack" | "transport",
+  ) => void;
 }
 
 interface PendingState {
@@ -71,14 +76,14 @@ export class PriorityCommandEngine {
     motor: null,
     servo: new Map(),
     tuning: new Map(),
-    tuningOrder: []
+    tuningOrder: [],
   };
 
   private lastCommitted: LastCommittedState = {
     mode: null,
     motor: buildMotorFrame({ left: 0, right: 0 }),
     servo: new Map(),
-    tuning: new Map()
+    tuning: new Map(),
   };
 
   constructor(sendFn: SendFn, options?: EngineOptions) {
@@ -122,7 +127,7 @@ export class PriorityCommandEngine {
   queueMotor(command: MotorCommand): void {
     this.pending.motor = {
       left: Math.round(command.left),
-      right: Math.round(command.right)
+      right: Math.round(command.right),
     };
   }
 
@@ -213,7 +218,7 @@ export class PriorityCommandEngine {
         this.inFlight = {
           ...nextFrame,
           attempts: 1,
-          sentAtMs: now
+          sentAtMs: now,
         };
 
         this.options.onFrameSent?.(nextFrame.frame);
@@ -277,7 +282,7 @@ export class PriorityCommandEngine {
         onCommit: () => {
           this.pending.stop = false;
           this.lastCommitted.motor = buildMotorFrame({ left: 0, right: 0 });
-        }
+        },
       };
     }
 
@@ -294,7 +299,7 @@ export class PriorityCommandEngine {
             if (this.pending.mode === mode) {
               this.pending.mode = null;
             }
-          }
+          },
         };
       }
     }
@@ -316,23 +321,26 @@ export class PriorityCommandEngine {
             this.pending.servo.delete(servoFrame.id);
           }
           this.nextServoAtMs = Date.now() + SERVO_INTERVAL_MS;
-        }
+        },
       };
     }
 
     if (tuningFrame !== null) {
-      const canSendBeforeMotor = !motorFrame || (now + TUNING_MOTOR_GUARD_MS) < this.nextMotorAtMs;
+      const canSendBeforeMotor =
+        !motorFrame || now + TUNING_MOTOR_GUARD_MS < this.nextMotorAtMs;
       if (canSendBeforeMotor) {
         return {
           kind: "TUNING",
           frame: tuningFrame.frame,
           onCommit: () => {
             this.lastCommitted.tuning.set(tuningFrame.key, tuningFrame.value);
-            if (this.pending.tuning.get(tuningFrame.key) === tuningFrame.value) {
+            if (
+              this.pending.tuning.get(tuningFrame.key) === tuningFrame.value
+            ) {
               this.pending.tuning.delete(tuningFrame.key);
             }
             this.removeTuningOrderKey(tuningFrame.key);
-          }
+          },
         };
       }
     }
@@ -351,7 +359,7 @@ export class PriorityCommandEngine {
             this.pending.motor = null;
           }
           this.nextMotorAtMs = Date.now() + MOTOR_INTERVAL_MS;
-        }
+        },
       };
     }
 
@@ -365,14 +373,18 @@ export class PriorityCommandEngine {
             this.pending.tuning.delete(tuningFrame.key);
           }
           this.removeTuningOrderKey(tuningFrame.key);
-        }
+        },
       };
     }
 
     return null;
   }
 
-  private peekMotorFrame(): { frame: string; left: number; right: number } | null {
+  private peekMotorFrame(): {
+    frame: string;
+    left: number;
+    right: number;
+  } | null {
     if (this.pending.motor === null) {
       return null;
     }
@@ -381,7 +393,11 @@ export class PriorityCommandEngine {
     const frame = buildMotorFrame(command);
 
     if (frame === this.lastCommitted.motor) {
-      if (this.pending.motor && this.pending.motor.left === command.left && this.pending.motor.right === command.right) {
+      if (
+        this.pending.motor &&
+        this.pending.motor.left === command.left &&
+        this.pending.motor.right === command.right
+      ) {
         this.pending.motor = null;
       }
       return null;
@@ -390,11 +406,15 @@ export class PriorityCommandEngine {
     return {
       frame,
       left: command.left,
-      right: command.right
+      right: command.right,
     };
   }
 
-  private peekServoFrame(): { frame: string; id: 1 | 2 | 3; value: number } | null {
+  private peekServoFrame(): {
+    frame: string;
+    id: 1 | 2 | 3;
+    value: number;
+  } | null {
     for (const [id, value] of this.pending.servo.entries()) {
       if (this.lastCommitted.servo.get(id) === value) {
         this.pending.servo.delete(id);
@@ -404,14 +424,18 @@ export class PriorityCommandEngine {
       return {
         frame: buildServoFrame(id, value),
         id,
-        value
+        value,
       };
     }
 
     return null;
   }
 
-  private peekTuningFrame(): { frame: string; key: string; value: number } | null {
+  private peekTuningFrame(): {
+    frame: string;
+    key: string;
+    value: number;
+  } | null {
     while (this.pending.tuningOrder.length > 0) {
       const key = this.pending.tuningOrder[0];
       if (!key) {
@@ -435,7 +459,7 @@ export class PriorityCommandEngine {
       return {
         frame: buildTuningFrame(key, value),
         key,
-        value
+        value,
       };
     }
 

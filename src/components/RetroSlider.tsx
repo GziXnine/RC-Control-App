@@ -146,17 +146,17 @@ export function RetroSlider({
             styles.fill,
             vertical
               ? {
-                  height: thumbOffset,
-                  bottom: 0,
-                  left: 0,
-                  right: 0
-                }
+                height: thumbOffset,
+                bottom: 0,
+                left: 0,
+                right: 0
+              }
               : {
-                  width: thumbOffset,
-                  top: 0,
-                  bottom: 0,
-                  left: 0
-                }
+                width: thumbOffset,
+                top: 0,
+                bottom: 0,
+                left: 0
+              }
           ]}
         />
         <View
@@ -164,13 +164,13 @@ export function RetroSlider({
             styles.thumb,
             vertical
               ? {
-                  bottom: thumbOffset - 16,
-                  left: -9
-                }
+                bottom: thumbOffset - 16,
+                left: -9
+              }
               : {
-                  left: thumbOffset - 16,
-                  top: -9
-                }
+                left: thumbOffset - 16,
+                top: -9
+              }
           ]}
         />
       </View>

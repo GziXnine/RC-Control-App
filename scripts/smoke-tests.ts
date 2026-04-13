@@ -1,7 +1,12 @@
+/** @format */
+
 import assert from "node:assert/strict";
 
 import { PriorityCommandEngine } from "../src/comms/priorityCommandEngine";
-import { getReconnectDelayMs, hasTelemetryTimedOut } from "../src/comms/reconnectPolicy";
+import {
+  getReconnectDelayMs,
+  hasTelemetryTimedOut,
+} from "../src/comms/reconnectPolicy";
 import { joystickToDifferential, neutralMotor } from "../src/control/driveMath";
 import {
   buildModeFrame,
@@ -10,7 +15,7 @@ import {
   buildStopFrame,
   buildTuningFrame,
   parseCommandAckFrame,
-  parseTelemetryFrame
+  parseTelemetryFrame,
 } from "../src/protocol/frames";
 
 function wait(ms: number): Promise<void> {
@@ -26,7 +31,9 @@ async function testProtocolFrames(): Promise<void> {
   assert.equal(buildServoFrame(2, 188), "S2:180;");
   assert.equal(buildTuningFrame("base pwm fast", 175.8), "T:BASEPWMFAST=176;");
 
-  const telemetry = parseTelemetryFrame("R:A,1,34,25,28,120,118,90,95,30,1,7,140,3,1");
+  const telemetry = parseTelemetryFrame(
+    "R:A,1,34,25,28,120,118,90,95,30,1,7,140,3,1",
+  );
   assert.ok(telemetry);
   assert.equal(telemetry?.mode, "AUTO");
   assert.equal(telemetry?.frontCm, 34);
@@ -68,8 +75,8 @@ async function testQueueAndAckGate(): Promise<void> {
     {
       periodMs: 10,
       ackTimeoutMs: 40,
-      maxRetries: 2
-    }
+      maxRetries: 2,
+    },
   );
 
   engine.start();
@@ -103,8 +110,8 @@ async function testPriorityFairness(): Promise<void> {
     {
       periodMs: 10,
       ackTimeoutMs: 80,
-      maxRetries: 2
-    }
+      maxRetries: 2,
+    },
   );
 
   engine.start();
@@ -138,7 +145,7 @@ async function run(): Promise<void> {
     { name: "joystick mapping", run: testJoystickMath },
     { name: "ack gate", run: testQueueAndAckGate },
     { name: "priority fairness", run: testPriorityFairness },
-    { name: "reconnect policy", run: testReconnectPolicy }
+    { name: "reconnect policy", run: testReconnectPolicy },
   ];
 
   for (const test of tests) {

@@ -1,3 +1,5 @@
+/** @format */
+
 const ASCII_SAFE = /[^\x20-\x7E]/g;
 
 export class FrameStream {

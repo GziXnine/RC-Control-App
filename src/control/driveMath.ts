@@ -1,3 +1,5 @@
+/** @format */
+
 import { DriveTuning, MotorCommand } from "../types/protocol";
 
 function clamp(value: number, min: number, max: number): number {
@@ -43,7 +45,7 @@ export function joystickToDifferential(
   x: number,
   y: number,
   tuning: DriveTuning,
-  previous: MotorCommand
+  previous: MotorCommand,
 ): MotorCommand {
   const normalizedX = clamp(x, -1, 1);
   const normalizedY = clamp(y, -1, 1);
@@ -68,7 +70,7 @@ export function joystickToDifferential(
 
   return {
     left: rateLimit(previous.left, targetLeft, step),
-    right: rateLimit(previous.right, targetRight, step)
+    right: rateLimit(previous.right, targetRight, step),
   };
 }
 

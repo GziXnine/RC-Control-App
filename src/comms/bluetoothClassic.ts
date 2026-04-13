@@ -1,3 +1,5 @@
+/** @format */
+
 import { Platform } from "react-native";
 import RNBluetoothClassic from "react-native-bluetooth-classic";
 
@@ -38,7 +40,7 @@ export class BluetoothClassicClient {
       return raw
         .map((item: any) => ({
           address: String(item.address ?? item.id ?? ""),
-          name: String(item.name ?? item.address ?? "Unknown")
+          name: String(item.name ?? item.address ?? "Unknown"),
         }))
         .filter((item: BluetoothDeviceInfo) => item.address.length > 0);
     } catch {
@@ -52,7 +54,7 @@ export class BluetoothClassicClient {
     try {
       let device = await bt.connectToDevice?.(address, {
         delimiter: "",
-        deviceCharset: "ascii"
+        deviceCharset: "ascii",
       });
 
       if (!device) {
@@ -130,12 +132,15 @@ export class BluetoothClassicClient {
     }
 
     if (this.activeDevice?.address && bt.onDeviceRead) {
-      this.readSubscription = bt.onDeviceRead(this.activeDevice.address, (event: any) => {
-        const chunk = event?.data ?? event?.message ?? "";
-        if (typeof chunk === "string" && chunk.length > 0) {
-          onData(chunk);
-        }
-      });
+      this.readSubscription = bt.onDeviceRead(
+        this.activeDevice.address,
+        (event: any) => {
+          const chunk = event?.data ?? event?.message ?? "";
+          if (typeof chunk === "string" && chunk.length > 0) {
+            onData(chunk);
+          }
+        },
+      );
       return;
     }
 

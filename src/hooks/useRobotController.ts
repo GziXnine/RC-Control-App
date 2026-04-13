@@ -1,21 +1,34 @@
+/** @format */
+
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ScreenOrientation from "expo-screen-orientation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { BluetoothClassicClient, BluetoothDeviceInfo } from "../comms/bluetoothClassic";
+import {
+  BluetoothClassicClient,
+  BluetoothDeviceInfo,
+} from "../comms/bluetoothClassic";
 import { PriorityCommandEngine } from "../comms/priorityCommandEngine";
-import { getReconnectDelayMs, hasTelemetryTimedOut } from "../comms/reconnectPolicy";
+import {
+  getReconnectDelayMs,
+  hasTelemetryTimedOut,
+} from "../comms/reconnectPolicy";
 import { joystickToDifferential, neutralMotor } from "../control/driveMath";
 import { FrameStream } from "../protocol/frameStream";
 import { parseCommandAckFrame, parseTelemetryFrame } from "../protocol/frames";
-import { DriveTuning, RobotMode, Telemetry, TuningLimits } from "../types/protocol";
+import {
+  DriveTuning,
+  RobotMode,
+  Telemetry,
+  TuningLimits,
+} from "../types/protocol";
 
 const DEFAULT_DRIVE: DriveTuning = {
   max: 210,
   dead: 8,
   acc: 8,
   turn: 100,
-  servoStep: 2
+  servoStep: 2,
 };
 
 const DEFAULT_LIMITS: TuningLimits = {
@@ -24,7 +37,7 @@ const DEFAULT_LIMITS: TuningLimits = {
   s2Min: 20,
   s2Max: 165,
   s3Min: 0,
-  s3Max: 180
+  s3Max: 180,
 };
 
 const DEFAULT_AUTO_VALUES: Record<string, number> = {
@@ -41,7 +54,7 @@ const DEFAULT_AUTO_VALUES: Record<string, number> = {
   FOLLOWTARGETCM: 30,
   FOLLOWBASEPWM: 125,
   FOLLOWKPNUM: 7,
-  FOLLOWKPDEN: 10
+  FOLLOWKPDEN: 10,
 };
 
 const DEFAULT_TELEMETRY: Telemetry = {
@@ -55,7 +68,7 @@ const DEFAULT_TELEMETRY: Telemetry = {
   servo1: 90,
   servo2: 95,
   servo3: 90,
-  stopLatched: false
+  stopLatched: false,
 };
 
 const TUNING_STORAGE_KEY = "competition_robot_tuning_profile_v1";
@@ -80,7 +93,7 @@ const AUTO_LIMITS: Record<string, { min: number; max: number }> = {
   FOLLOWTARGETCM: { min: 5, max: 120 },
   FOLLOWBASEPWM: { min: 20, max: 255 },
   FOLLOWKPNUM: { min: -80, max: 80 },
-  FOLLOWKPDEN: { min: 1, max: 80 }
+  FOLLOWKPDEN: { min: 1, max: 80 },
 };
 
 const AUTO_KEYS = Object.keys(DEFAULT_AUTO_VALUES);
@@ -92,7 +105,13 @@ interface TuningProfile {
   autoValues: Record<string, number>;
 }
 
-type BluetoothState = "DISCONNECTED" | "SCANNING" | "READY" | "CONNECTING" | "CONNECTED" | "ERROR";
+type BluetoothState =
+  | "DISCONNECTED"
+  | "SCANNING"
+  | "READY"
+  | "CONNECTING"
+  | "CONNECTED"
+  | "ERROR";
 
 interface ServoValues {
   s1: number;
@@ -125,23 +144,67 @@ function sanitizeDrive(input?: Partial<DriveTuning>): DriveTuning {
   const source = input ?? {};
 
   return {
-    max: clampInt(Math.round(toFiniteNumber(source.max, DEFAULT_DRIVE.max)), 60, 255),
-    dead: clampInt(Math.round(toFiniteNumber(source.dead, DEFAULT_DRIVE.dead)), 0, 80),
-    acc: clampInt(Math.round(toFiniteNumber(source.acc, DEFAULT_DRIVE.acc)), 1, 40),
-    turn: clampInt(Math.round(toFiniteNumber(source.turn, DEFAULT_DRIVE.turn)), 40, 180),
-    servoStep: clampInt(Math.round(toFiniteNumber(source.servoStep, DEFAULT_DRIVE.servoStep)), 1, 12)
+    max: clampInt(
+      Math.round(toFiniteNumber(source.max, DEFAULT_DRIVE.max)),
+      60,
+      255,
+    ),
+    dead: clampInt(
+      Math.round(toFiniteNumber(source.dead, DEFAULT_DRIVE.dead)),
+      0,
+      80,
+    ),
+    acc: clampInt(
+      Math.round(toFiniteNumber(source.acc, DEFAULT_DRIVE.acc)),
+      1,
+      40,
+    ),
+    turn: clampInt(
+      Math.round(toFiniteNumber(source.turn, DEFAULT_DRIVE.turn)),
+      40,
+      180,
+    ),
+    servoStep: clampInt(
+      Math.round(toFiniteNumber(source.servoStep, DEFAULT_DRIVE.servoStep)),
+      1,
+      12,
+    ),
   };
 }
 
 function sanitizeLimits(input?: Partial<TuningLimits>): TuningLimits {
   const source = input ?? {};
 
-  let s1Min = clampInt(Math.round(toFiniteNumber(source.s1Min, DEFAULT_LIMITS.s1Min)), 0, 180);
-  let s1Max = clampInt(Math.round(toFiniteNumber(source.s1Max, DEFAULT_LIMITS.s1Max)), 0, 180);
-  let s2Min = clampInt(Math.round(toFiniteNumber(source.s2Min, DEFAULT_LIMITS.s2Min)), 0, 180);
-  let s2Max = clampInt(Math.round(toFiniteNumber(source.s2Max, DEFAULT_LIMITS.s2Max)), 0, 180);
-  let s3Min = clampInt(Math.round(toFiniteNumber(source.s3Min, DEFAULT_LIMITS.s3Min)), 0, 180);
-  let s3Max = clampInt(Math.round(toFiniteNumber(source.s3Max, DEFAULT_LIMITS.s3Max)), 0, 180);
+  let s1Min = clampInt(
+    Math.round(toFiniteNumber(source.s1Min, DEFAULT_LIMITS.s1Min)),
+    0,
+    180,
+  );
+  let s1Max = clampInt(
+    Math.round(toFiniteNumber(source.s1Max, DEFAULT_LIMITS.s1Max)),
+    0,
+    180,
+  );
+  let s2Min = clampInt(
+    Math.round(toFiniteNumber(source.s2Min, DEFAULT_LIMITS.s2Min)),
+    0,
+    180,
+  );
+  let s2Max = clampInt(
+    Math.round(toFiniteNumber(source.s2Max, DEFAULT_LIMITS.s2Max)),
+    0,
+    180,
+  );
+  let s3Min = clampInt(
+    Math.round(toFiniteNumber(source.s3Min, DEFAULT_LIMITS.s3Min)),
+    0,
+    180,
+  );
+  let s3Max = clampInt(
+    Math.round(toFiniteNumber(source.s3Max, DEFAULT_LIMITS.s3Max)),
+    0,
+    180,
+  );
 
   if (s1Min > s1Max) {
     s1Max = s1Min;
@@ -159,28 +222,37 @@ function sanitizeLimits(input?: Partial<TuningLimits>): TuningLimits {
     s2Min,
     s2Max,
     s3Min,
-    s3Max
+    s3Max,
   };
 }
 
-function sanitizeAutoValues(input?: Record<string, number>): Record<string, number> {
+function sanitizeAutoValues(
+  input?: Record<string, number>,
+): Record<string, number> {
   const safe: Record<string, number> = {};
 
   for (const key of AUTO_KEYS) {
     const bounds = AUTO_LIMITS[key] ?? { min: -32000, max: 32000 };
     const fallback = DEFAULT_AUTO_VALUES[key] ?? 0;
     const raw = input?.[key];
-    safe[key] = clampInt(Math.round(toFiniteNumber(raw, fallback)), bounds.min, bounds.max);
+    safe[key] = clampInt(
+      Math.round(toFiniteNumber(raw, fallback)),
+      bounds.min,
+      bounds.max,
+    );
   }
 
   return safe;
 }
 
-function clampServosToLimits(values: ServoValues, limits: TuningLimits): ServoValues {
+function clampServosToLimits(
+  values: ServoValues,
+  limits: TuningLimits,
+): ServoValues {
   return {
     s1: clampInt(Math.round(values.s1), limits.s1Min, limits.s1Max),
     s2: clampInt(Math.round(values.s2), limits.s2Min, limits.s2Max),
-    s3: clampInt(Math.round(values.s3), limits.s3Min, limits.s3Max)
+    s3: clampInt(Math.round(values.s3), limits.s3Min, limits.s3Max),
   };
 }
 
@@ -189,18 +261,21 @@ function createDefaultProfile(): TuningProfile {
     version: TUNING_PROFILE_VERSION,
     drive: sanitizeDrive(DEFAULT_DRIVE),
     limits: sanitizeLimits(DEFAULT_LIMITS),
-    autoValues: sanitizeAutoValues(DEFAULT_AUTO_VALUES)
+    autoValues: sanitizeAutoValues(DEFAULT_AUTO_VALUES),
   };
 }
 
 function normalizeStoredProfile(input: unknown): TuningProfile {
-  const candidate = typeof input === "object" && input !== null ? (input as Partial<TuningProfile>) : {};
+  const candidate =
+    typeof input === "object" && input !== null
+      ? (input as Partial<TuningProfile>)
+      : {};
 
   return {
     version: TUNING_PROFILE_VERSION,
     drive: sanitizeDrive(candidate.drive),
     limits: sanitizeLimits(candidate.limits),
-    autoValues: sanitizeAutoValues(candidate.autoValues)
+    autoValues: sanitizeAutoValues(candidate.autoValues),
   };
 }
 
@@ -229,8 +304,13 @@ export function useRobotController() {
   const [telemetry, setTelemetry] = useState<Telemetry>(DEFAULT_TELEMETRY);
   const [drive, setDrive] = useState<DriveTuning>(DEFAULT_DRIVE);
   const [limits, setLimits] = useState<TuningLimits>(DEFAULT_LIMITS);
-  const [autoValues, setAutoValues] = useState<Record<string, number>>(DEFAULT_AUTO_VALUES);
-  const [servoValues, setServoValues] = useState<ServoValues>({ s1: 90, s2: 95, s3: 90 });
+  const [autoValues, setAutoValues] =
+    useState<Record<string, number>>(DEFAULT_AUTO_VALUES);
+  const [servoValues, setServoValues] = useState<ServoValues>({
+    s1: 90,
+    s2: 95,
+    s3: 90,
+  });
 
   const [lastFrame, setLastFrame] = useState("IDLE");
   const [queueSize, setQueueSize] = useState(0);
@@ -238,7 +318,8 @@ export function useRobotController() {
   const [bluetoothModalOpen, setBluetoothModalOpen] = useState(false);
   const [tuningModalOpen, setTuningModalOpen] = useState(false);
   const [bluetoothBusy, setBluetoothBusy] = useState(false);
-  const [bluetoothStatus, setBluetoothStatus] = useState<BluetoothState>("DISCONNECTED");
+  const [bluetoothStatus, setBluetoothStatus] =
+    useState<BluetoothState>("DISCONNECTED");
   const [bluetoothError, setBluetoothError] = useState<string | null>(null);
   const [devices, setDevices] = useState<BluetoothDeviceInfo[]>([]);
   const [connectedAddress, setConnectedAddress] = useState<string | null>(null);
@@ -264,43 +345,48 @@ export function useRobotController() {
     servoValuesRef.current = servoValues;
   }, [servoValues]);
 
-  const handleLinkLoss = useCallback((reason: string) => {
-    if (linkDropGuardRef.current) {
-      return;
-    }
-
-    const lostAddress = connectedAddressRef.current;
-
-    linkDropGuardRef.current = true;
-    writeFailureStreakRef.current = 0;
-    ackDropStreakRef.current = 0;
-    lastTelemetryAtRef.current = 0;
-    connectedAddressRef.current = null;
-
-    void bluetoothRef.current.disconnect().finally(() => {
-      streamRef.current.reset();
-      engineRef.current?.clearPending();
-      motorRef.current = neutralMotor();
-      setConnectedAddress(null);
-      setStopLatched(true);
-
-      if (lostAddress && autoReconnectEnabledRef.current) {
-        clearReconnectTimer();
-        reconnectAttemptRef.current = 0;
-        reconnectTargetRef.current = lostAddress;
-        setBluetoothStatus("CONNECTING");
-        setBluetoothError(reason);
-      } else {
-        setBluetoothStatus("ERROR");
-        setBluetoothError(reason);
+  const handleLinkLoss = useCallback(
+    (reason: string) => {
+      if (linkDropGuardRef.current) {
+        return;
       }
 
-      linkDropGuardRef.current = false;
-    });
-  }, [clearReconnectTimer]);
+      const lostAddress = connectedAddressRef.current;
+
+      linkDropGuardRef.current = true;
+      writeFailureStreakRef.current = 0;
+      ackDropStreakRef.current = 0;
+      lastTelemetryAtRef.current = 0;
+      connectedAddressRef.current = null;
+
+      void bluetoothRef.current.disconnect().finally(() => {
+        streamRef.current.reset();
+        engineRef.current?.clearPending();
+        motorRef.current = neutralMotor();
+        setConnectedAddress(null);
+        setStopLatched(true);
+
+        if (lostAddress && autoReconnectEnabledRef.current) {
+          clearReconnectTimer();
+          reconnectAttemptRef.current = 0;
+          reconnectTargetRef.current = lostAddress;
+          setBluetoothStatus("CONNECTING");
+          setBluetoothError(reason);
+        } else {
+          setBluetoothStatus("ERROR");
+          setBluetoothError(reason);
+        }
+
+        linkDropGuardRef.current = false;
+      });
+    },
+    [clearReconnectTimer],
+  );
 
   useEffect(() => {
-    void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+    void ScreenOrientation.lockAsync(
+      ScreenOrientation.OrientationLock.LANDSCAPE,
+    );
 
     return () => {
       void ScreenOrientation.unlockAsync();
@@ -339,11 +425,13 @@ export function useRobotController() {
           if (connectedAddressRef.current !== null) {
             ackDropStreakRef.current += 1;
             if (ackDropStreakRef.current >= ACK_DROP_THRESHOLD) {
-              handleLinkLoss("ACK timeout/transport failure. Link is unstable.");
+              handleLinkLoss(
+                "ACK timeout/transport failure. Link is unstable.",
+              );
             }
           }
-        }
-      }
+        },
+      },
     );
 
     engineRef.current = engine;
@@ -372,7 +460,9 @@ export function useRobotController() {
       }
 
       const lastTelemetry = lastTelemetryAtRef.current;
-      if (hasTelemetryTimedOut(lastTelemetry, Date.now(), TELEMETRY_TIMEOUT_MS)) {
+      if (
+        hasTelemetryTimedOut(lastTelemetry, Date.now(), TELEMETRY_TIMEOUT_MS)
+      ) {
         handleLinkLoss("Telemetry timeout. Robot link is unstable or offline.");
       }
     }, LINK_MONITOR_INTERVAL_MS);
@@ -487,7 +577,7 @@ export function useRobotController() {
         setBluetoothModalOpen(false);
       }
     },
-    [clearReconnectTimer, queueAllTuning]
+    [clearReconnectTimer, queueAllTuning],
   );
 
   const attemptAutoReconnect = useCallback(async () => {
@@ -511,7 +601,9 @@ export function useRobotController() {
     }
 
     setBluetoothStatus("CONNECTING");
-    setBluetoothError(`Auto reconnect attempt ${reconnectAttemptRef.current} failed. Retrying...`);
+    setBluetoothError(
+      `Auto reconnect attempt ${reconnectAttemptRef.current} failed. Retrying...`,
+    );
   }, [onBluetoothChunk, restoreConnectedSession]);
 
   useEffect(() => {
@@ -535,14 +627,18 @@ export function useRobotController() {
     if (reconnectAttemptRef.current >= MAX_RECONNECT_ATTEMPTS) {
       reconnectTargetRef.current = null;
       setBluetoothStatus("ERROR");
-      setBluetoothError("Auto reconnect exhausted retries. Reconnect manually.");
+      setBluetoothError(
+        "Auto reconnect exhausted retries. Reconnect manually.",
+      );
       return;
     }
 
     const attempt = reconnectAttemptRef.current;
     const delayMs = getReconnectDelayMs(attempt);
     setBluetoothStatus("CONNECTING");
-    setBluetoothError(`Auto reconnect ${attempt + 1}/${MAX_RECONNECT_ATTEMPTS} in ${delayMs}ms.`);
+    setBluetoothError(
+      `Auto reconnect ${attempt + 1}/${MAX_RECONNECT_ATTEMPTS} in ${delayMs}ms.`,
+    );
 
     reconnectTimerRef.current = setTimeout(() => {
       reconnectTimerRef.current = null;
@@ -577,11 +673,11 @@ export function useRobotController() {
           version: TUNING_PROFILE_VERSION,
           drive: safeDrive,
           limits: safeLimits,
-          autoValues: safeAuto
+          autoValues: safeAuto,
         });
       }
     },
-    [queueAllTuning]
+    [queueAllTuning],
   );
 
   useEffect(() => {
@@ -627,7 +723,7 @@ export function useRobotController() {
         version: TUNING_PROFILE_VERSION,
         drive: sanitizeDrive(driveRef.current),
         limits: sanitizeLimits(limitsRef.current),
-        autoValues: sanitizeAutoValues(autoRef.current)
+        autoValues: sanitizeAutoValues(autoRef.current),
       };
 
       await AsyncStorage.setItem(TUNING_STORAGE_KEY, JSON.stringify(profile));
@@ -651,7 +747,11 @@ export function useRobotController() {
       const defaults = createDefaultProfile();
       applyProfile(defaults, connectedAddress !== null);
       await AsyncStorage.setItem(TUNING_STORAGE_KEY, JSON.stringify(defaults));
-      setTuningStatus(connectedAddress ? "DEFAULTS RESTORED + SYNC QUEUED" : "DEFAULTS RESTORED");
+      setTuningStatus(
+        connectedAddress
+          ? "DEFAULTS RESTORED + SYNC QUEUED"
+          : "DEFAULTS RESTORED",
+      );
     } catch {
       setTuningStatus("RESET FAILED");
     } finally {
@@ -717,7 +817,10 @@ export function useRobotController() {
           return;
         }
 
-        const ok = await bluetoothRef.current.connect(address, onBluetoothChunk);
+        const ok = await bluetoothRef.current.connect(
+          address,
+          onBluetoothChunk,
+        );
         if (ok) {
           restoreConnectedSession(address, "manual");
         } else {
@@ -731,7 +834,7 @@ export function useRobotController() {
         setBluetoothBusy(false);
       }
     },
-    [clearReconnectTimer, onBluetoothChunk, restoreConnectedSession]
+    [clearReconnectTimer, onBluetoothChunk, restoreConnectedSession],
   );
 
   const disconnectDevice = useCallback(async () => {
@@ -779,11 +882,16 @@ export function useRobotController() {
         return;
       }
 
-      const next = joystickToDifferential(x, y, driveRef.current, motorRef.current);
+      const next = joystickToDifferential(
+        x,
+        y,
+        driveRef.current,
+        motorRef.current,
+      );
       motorRef.current = next;
       engineRef.current?.queueMotor(next);
     },
-    [mode, stopLatched]
+    [mode, stopLatched],
   );
 
   const onJoystickRelease = useCallback(() => {
@@ -849,7 +957,7 @@ export function useRobotController() {
         return next;
       });
     },
-    [queueTuning]
+    [queueTuning],
   );
 
   const updateLimits = useCallback(
@@ -893,7 +1001,7 @@ export function useRobotController() {
         return next;
       });
     },
-    [queueTuning]
+    [queueTuning],
   );
 
   const updateAuto = useCallback(
@@ -909,7 +1017,7 @@ export function useRobotController() {
 
         const next = {
           ...previous,
-          [normalizedKey]: rounded
+          [normalizedKey]: rounded,
         };
 
         autoRef.current = next;
@@ -918,7 +1026,7 @@ export function useRobotController() {
         return next;
       });
     },
-    [queueTuning]
+    [queueTuning],
   );
 
   const bluetoothLabel = connectedAddress
@@ -967,6 +1075,6 @@ export function useRobotController() {
     updateLimits,
     updateAuto,
     saveTuningProfile,
-    resetTuningDefaults
+    resetTuningDefaults,
   };
 }
