@@ -1,0 +1,22 @@
+export const palette = {
+  shell: "#1a1d1f",
+  shellEdge: "#3a3f45",
+  panel: "#2a2f35",
+  panelRaised: "#353b43",
+  panelInset: "#111518",
+  lcdBg: "#91ab6f",
+  lcdDark: "#26351e",
+  lcdMid: "#3f5a31",
+  lcdGlow: "#b9d087",
+  warning: "#ff4858",
+  warningDark: "#8f2331",
+  accent: "#4ec8e6",
+  accentDark: "#1f596b",
+  knob: "#d2c3a1",
+  knobDark: "#7a6a4f",
+  textPrimary: "#f2f5f7",
+  textSecondary: "#bfc8d2",
+  frameBorder: "#4f5967",
+  greenLed: "#8cf78a",
+  greenLedOff: "#34503c"
+};

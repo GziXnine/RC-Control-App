@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "Competition Robot Control",
+    "slug": "competition-robot-control",
+    "version": "1.0.0",
+    "orientation": "default",
+    "newArchEnabled": true,
+    "android": {
+      "permissions": [
+        "BLUETOOTH",
+        "BLUETOOTH_ADMIN",
+        "BLUETOOTH_CONNECT",
+        "BLUETOOTH_SCAN",
+        "ACCESS_FINE_LOCATION"
+      ],
+      "package": "com.plaza.robotcontrol"
+    },
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35,
+            "minSdkVersion": 24
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "35afa3e3-6e8a-4f51-a15a-5fa4e91d84da"
+      }
+    }
+  }
+}
