@@ -128,7 +128,11 @@ export class BluetoothClassicClient {
     const noise = () => Math.floor(Math.random() * 5) - 2;
 
     const forwardBias = this.sim.mode === "A" ? 2 : Math.round(speed / 90);
-    this.sim.frontCm = clampInt(this.sim.frontCm - forwardBias + noise(), 8, 220);
+    this.sim.frontCm = clampInt(
+      this.sim.frontCm - forwardBias + noise(),
+      8,
+      220,
+    );
 
     if (this.sim.frontCm < 18) {
       this.sim.frontCm = 120;

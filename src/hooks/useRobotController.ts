@@ -260,8 +260,9 @@ export function useRobotController() {
   const [telemetry, setTelemetry] = useState<Telemetry>(DEFAULT_TELEMETRY);
   const [drive, setDrive] = useState<DriveTuning>(DEFAULT_DRIVE);
   const [limits, setLimits] = useState<TuningLimits>(DEFAULT_LIMITS);
-  const [autoValues, setAutoValues] =
-    useState<Record<string, number>>(DEFAULT_FIRMWARE_TUNING);
+  const [autoValues, setAutoValues] = useState<Record<string, number>>(
+    DEFAULT_FIRMWARE_TUNING,
+  );
   const [servoValues, setServoValues] = useState<ServoValues>({
     s1: 90,
     s2: 95,
@@ -472,27 +473,30 @@ export function useRobotController() {
     [canQueueCommand],
   );
 
-  const queueAllTuning = useCallback((profile?: TuningProfile) => {
-    const sourceLimits = profile?.limits ?? limitsRef.current;
-    const sourceAuto = profile?.autoValues ?? autoRef.current;
-    const engine = engineRef.current;
+  const queueAllTuning = useCallback(
+    (profile?: TuningProfile) => {
+      const sourceLimits = profile?.limits ?? limitsRef.current;
+      const sourceAuto = profile?.autoValues ?? autoRef.current;
+      const engine = engineRef.current;
 
-    if (!engine || !canQueueCommand()) {
-      return;
-    }
+      if (!engine || !canQueueCommand()) {
+        return;
+      }
 
-    engine.queueTuning("S1MIN", sourceLimits.s1Min);
-    engine.queueTuning("S1MAX", sourceLimits.s1Max);
-    engine.queueTuning("S2MIN", sourceLimits.s2Min);
-    engine.queueTuning("S2MAX", sourceLimits.s2Max);
-    engine.queueTuning("S3MIN", sourceLimits.s3Min);
-    engine.queueTuning("S3MAX", sourceLimits.s3Max);
+      engine.queueTuning("S1MIN", sourceLimits.s1Min);
+      engine.queueTuning("S1MAX", sourceLimits.s1Max);
+      engine.queueTuning("S2MIN", sourceLimits.s2Min);
+      engine.queueTuning("S2MAX", sourceLimits.s2Max);
+      engine.queueTuning("S3MIN", sourceLimits.s3Min);
+      engine.queueTuning("S3MAX", sourceLimits.s3Max);
 
-    for (const key of FIRMWARE_TUNING_KEYS) {
-      const value = sourceAuto[key] ?? DEFAULT_FIRMWARE_TUNING[key] ?? 0;
-      engine.queueTuning(key, value);
-    }
-  }, [canQueueCommand]);
+      for (const key of FIRMWARE_TUNING_KEYS) {
+        const value = sourceAuto[key] ?? DEFAULT_FIRMWARE_TUNING[key] ?? 0;
+        engine.queueTuning(key, value);
+      }
+    },
+    [canQueueCommand],
+  );
 
   const restoreConnectedSession = useCallback(
     (address: string, source: "manual" | "auto") => {
@@ -899,60 +903,68 @@ export function useRobotController() {
     engineRef.current?.queueMotor(neutral);
   }, [canQueueCommand, mode]);
 
-  const setServo = useCallback((id: 1 | 2 | 3, value: number) => {
-    const rounded = Math.round(value);
-    const safe =
-      id === 1
-        ? clampInt(rounded, limitsRef.current.s1Min, limitsRef.current.s1Max)
-        : id === 2
-          ? clampInt(rounded, limitsRef.current.s2Min, limitsRef.current.s2Max)
-          : clampInt(rounded, limitsRef.current.s3Min, limitsRef.current.s3Max);
+  const setServo = useCallback(
+    (id: 1 | 2 | 3, value: number) => {
+      const rounded = Math.round(value);
+      const safe =
+        id === 1
+          ? clampInt(rounded, limitsRef.current.s1Min, limitsRef.current.s1Max)
+          : id === 2
+            ? clampInt(
+                rounded,
+                limitsRef.current.s2Min,
+                limitsRef.current.s2Max,
+              )
+            : clampInt(
+                rounded,
+                limitsRef.current.s3Min,
+                limitsRef.current.s3Max,
+              );
 
-    setServoValues((previous) => {
-      if (id === 1) {
-        return { ...previous, s1: safe };
-      }
-
-      if (id === 2) {
-        return { ...previous, s2: safe };
-      }
-
-      return { ...previous, s3: safe };
-    });
-
-    setTelemetry((previous) => ({
-      ...previous,
-      servo1: id === 1 ? safe : previous.servo1,
-      servo2: id === 2 ? safe : previous.servo2,
-      servo3: id === 3 ? safe : previous.servo3,
-    }));
-
-    if (canQueueCommand()) {
-      engineRef.current?.queueServo(id, safe);
-    }
-  }, [canQueueCommand]);
-
-  const updateDrive = useCallback(
-    (patch: Partial<DriveTuning>) => {
-      setDrive((previous) => {
-        const next = sanitizeDrive({ ...previous, ...patch });
-        driveRef.current = next;
-
-        if (
-          next.max !== previous.max ||
-          next.acc !== previous.acc ||
-          next.dead !== previous.dead ||
-          next.turn !== previous.turn ||
-          next.servoStep !== previous.servoStep
-        ) {
-          setTuningStatus("LIVE UNSAVED");
+      setServoValues((previous) => {
+        if (id === 1) {
+          return { ...previous, s1: safe };
         }
 
-        return next;
+        if (id === 2) {
+          return { ...previous, s2: safe };
+        }
+
+        return { ...previous, s3: safe };
       });
+
+      setTelemetry((previous) => ({
+        ...previous,
+        servo1: id === 1 ? safe : previous.servo1,
+        servo2: id === 2 ? safe : previous.servo2,
+        servo3: id === 3 ? safe : previous.servo3,
+      }));
+
+      if (canQueueCommand()) {
+        engineRef.current?.queueServo(id, safe);
+      }
     },
-    [],
+    [canQueueCommand],
   );
+
+  const updateDrive = useCallback((patch: Partial<DriveTuning>) => {
+    setDrive((previous) => {
+      const next = sanitizeDrive({ ...previous, ...patch });
+      driveRef.current = next;
+
+      if (
+        next.max !== previous.max ||
+        next.acc !== previous.acc ||
+        next.dead !== previous.dead ||
+        next.turn !== previous.turn ||
+        next.servoStep !== previous.servoStep
+      ) {
+        setTuningStatus("LIVE UNSAVED");
+      }
+
+      return next;
+    });
+  }, []);
 
   const updateLimits = useCallback(
     (patch: Partial<TuningLimits>) => {
@@ -1001,7 +1013,12 @@ export function useRobotController() {
   const updateAuto = useCallback(
     (key: string, value: number) => {
       const normalizedKey = key.toUpperCase();
-      if (!Object.prototype.hasOwnProperty.call(FIRMWARE_TUNING_LIMITS, normalizedKey)) {
+      if (
+        !Object.prototype.hasOwnProperty.call(
+          FIRMWARE_TUNING_LIMITS,
+          normalizedKey,
+        )
+      ) {
         return;
       }
 

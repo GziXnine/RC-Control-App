@@ -15,7 +15,10 @@ interface EngineOptions {
   periodMs?: number;
   onError?: (error: unknown) => void;
   onFrameSent?: (frame: string) => void;
-  onFrameDropped?: (frame: string, reason: "transport" | "invalid-frame") => void;
+  onFrameDropped?: (
+    frame: string,
+    reason: "transport" | "invalid-frame",
+  ) => void;
 }
 
 interface PendingState {
@@ -102,14 +105,18 @@ export class PriorityCommandEngine {
   }
 
   queueMode(mode: RobotMode): void {
-    const lastQueued = this.pending.modeQueue[this.pending.modeQueue.length - 1] ?? null;
+    const lastQueued =
+      this.pending.modeQueue[this.pending.modeQueue.length - 1] ?? null;
     if (lastQueued === mode) {
       return;
     }
 
     this.pending.modeQueue.push(mode);
     if (this.pending.modeQueue.length > MAX_MODE_QUEUE) {
-      this.pending.modeQueue.splice(0, this.pending.modeQueue.length - MAX_MODE_QUEUE);
+      this.pending.modeQueue.splice(
+        0,
+        this.pending.modeQueue.length - MAX_MODE_QUEUE,
+      );
     }
   }
 
@@ -255,7 +262,9 @@ export class PriorityCommandEngine {
           frame: tuningFrame.frame,
           onCommit: () => {
             this.lastCommitted.tuning.set(tuningFrame.key, tuningFrame.value);
-            if (this.pending.tuning.get(tuningFrame.key) === tuningFrame.value) {
+            if (
+              this.pending.tuning.get(tuningFrame.key) === tuningFrame.value
+            ) {
               this.pending.tuning.delete(tuningFrame.key);
             }
             this.removeTuningOrderKey(tuningFrame.key);
