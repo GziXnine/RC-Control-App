@@ -8,9 +8,9 @@ interface LcdPanelProps {
   telemetry: Telemetry;
   queueSize: number;
   lastFrame: string;
-  lastAck: string;
-  ackCount: number;
-  nackCount: number;
+  lastRxFrame: string;
+  rxFrameCount: number;
+  connected: boolean;
 }
 
 function shortFrame(frame: string): string {
@@ -25,56 +25,74 @@ export function LcdPanel({
   telemetry,
   queueSize,
   lastFrame,
-  lastAck,
-  ackCount,
-  nackCount
+  lastRxFrame,
+  rxFrameCount,
+  connected
 }: LcdPanelProps): React.JSX.Element {
-  const speed = Math.round((Math.abs(telemetry.motorLeft) + Math.abs(telemetry.motorRight)) / 2);
+  const speed = Math.round(
+    (Math.abs(telemetry.motorLeft) + Math.abs(telemetry.motorRight)) / 2,
+  );
+  const turnBias = telemetry.motorLeft - telemetry.motorRight;
+  const nearestObstacle = [telemetry.frontCm, telemetry.leftCm, telemetry.rightCm]
+    .filter((item) => item > 0)
+    .reduce((min, value) => (value < min ? value : min), 999);
+  const nearestLabel = nearestObstacle === 999 ? "NONE" : String(nearestObstacle);
+  const heading =
+    Math.abs(turnBias) <= 10 ? "STRAIGHT" : turnBias > 0 ? "RIGHT BIAS" : "LEFT BIAS";
+  const obstacleState =
+    nearestObstacle === 999
+      ? "NO SENSOR DATA"
+      : nearestObstacle <= 20
+        ? "CAUTION"
+        : "CLEAR";
 
   return (
     <View style={styles.wrapper}>
       <View style={styles.scanOverlay} />
-      <Text style={styles.header}>Car Status</Text>
 
       <View style={styles.row}>
-        <Text style={styles.key}>MODE</Text>
-        <Text style={styles.value}>{telemetry.mode}</Text>
+        <Text style={styles.key}>LINK</Text>
+        <Text style={styles.value}>{connected ? "CONNECTED" : "OFFLINE"}</Text>
       </View>
-      <View style={styles.row}>
-        <Text style={styles.key}>STOP</Text>
-        <Text style={styles.value}>{telemetry.stopLatched ? "LATCHED" : "READY"}</Text>
-      </View>
+
       <View style={styles.row}>
         <Text style={styles.key}>SPEED</Text>
         <Text style={styles.value}>{speed}</Text>
       </View>
+
       <View style={styles.row}>
         <Text style={styles.key}>DIST CM</Text>
-        <Text style={styles.value}>{` ${telemetry.leftCm} | ${telemetry.frontCm} | ${telemetry.rightCm}`}</Text>
+        <Text style={styles.value}>{`${telemetry.leftCm} | ${telemetry.frontCm} | ${telemetry.rightCm}`}</Text>
       </View>
+
       <View style={styles.row}>
         <Text style={styles.key}>MOTOR</Text>
         <Text style={styles.value}>{`${telemetry.motorLeft} | ${telemetry.motorRight}`}</Text>
       </View>
+
       <View style={styles.row}>
-        <Text style={styles.key}>SERVOS</Text>
-        <Text style={styles.value}>{`${telemetry.servo1} | ${telemetry.servo2} | ${telemetry.servo3}`}</Text>
+        <Text style={styles.key}>TURN</Text>
+        <Text style={styles.value}>{`${turnBias} (${heading})`}</Text>
       </View>
+
+      <View style={styles.row}>
+        <Text style={styles.key}>NEAR CM</Text>
+        <Text style={styles.value}>{`${nearestLabel} (${obstacleState})`}</Text>
+      </View>
+
+      <View style={styles.row}>
+        <Text style={styles.key}>RX FRAMES</Text>
+        <Text style={styles.value}>{rxFrameCount}</Text>
+      </View>
+
       <View style={styles.row}>
         <Text style={styles.key}>QUEUE</Text>
         <Text style={styles.value}>{queueSize}</Text>
       </View>
+
       <View style={styles.row}>
         <Text style={styles.key}>TX</Text>
         <Text style={styles.value}>{shortFrame(lastFrame)}</Text>
-      </View>
-      <View style={styles.row}>
-        <Text style={styles.key}>ACK</Text>
-        <Text style={styles.value}>{shortFrame(lastAck)}</Text>
-      </View>
-      <View style={styles.row}>
-        <Text style={styles.key}>A/N</Text>
-        <Text style={styles.value}>{`${ackCount}/${nackCount}`}</Text>
       </View>
     </View>
   );

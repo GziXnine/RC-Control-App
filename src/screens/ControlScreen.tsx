@@ -36,14 +36,14 @@ export function ControlScreen(): React.JSX.Element {
               telemetry={controller.telemetry}
               queueSize={controller.queueSize}
               lastFrame={controller.lastFrame}
-              lastAck={controller.lastAck}
-              ackCount={controller.ackCount}
-              nackCount={controller.nackCount}
+              lastRxFrame={controller.lastRxFrame}
+              rxFrameCount={controller.rxFrameCount}
+              connected={controller.connectedAddress !== null}
             />
           </View>
 
           <View style={styles.rightColumn}>
-            <View style={styles.rightTop}>
+            <View style={styles.servoRack}>
               <RetroSlider
                 label="SERVO 1"
                 value={controller.servoValues.s1}
@@ -52,7 +52,7 @@ export function ControlScreen(): React.JSX.Element {
                 vertical
                 onChange={(value) => controller.setServo(1, value)}
                 variant="flat"
-                style={styles.verticalSlider}
+                style={styles.servoSlider}
               />
 
               <RetroSlider
@@ -63,19 +63,18 @@ export function ControlScreen(): React.JSX.Element {
                 vertical
                 onChange={(value) => controller.setServo(2, value)}
                 variant="flat"
-                style={styles.verticalSlider}
+                style={styles.servoSlider}
               />
-            </View>
 
-            <View style={styles.rightBottom}>
               <RetroSlider
                 label="SERVO 3"
                 value={controller.servoValues.s3}
                 min={controller.limits.s3Min}
                 max={controller.limits.s3Max}
+                vertical
                 onChange={(value) => controller.setServo(3, value)}
                 variant="flat"
-                style={styles.horizontalSlider}
+                style={styles.servoSlider}
               />
             </View>
           </View>
@@ -140,34 +139,22 @@ const styles = StyleSheet.create({
     gap: 8
   },
   leftColumn: {
-    flex: 1.2
+    flex: 1
   },
   centerColumn: {
     flex: 1
   },
   rightColumn: {
-    flex: 1,
-    minWidth: 240
+    flex: 1
   },
-  rightTop: {
+  servoRack: {
     flex: 1,
-    minHeight: 0,
     flexDirection: "row",
     gap: 8
   },
-  rightBottom: {
-    marginTop: 8,
-    height: 78,
-    paddingHorizontal: 2
-  },
-  verticalSlider: {
+  servoSlider: {
     flex: 1,
     minHeight: 0,
     paddingVertical: 2
-  },
-  horizontalSlider: {
-    flex: 1,
-    width: "100%",
-    paddingVertical: 0
   }
 });

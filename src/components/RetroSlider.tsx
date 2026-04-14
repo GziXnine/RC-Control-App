@@ -21,6 +21,7 @@ interface RetroSliderProps {
   onDragStateChange?: (dragging: boolean) => void;
   variant?: "card" | "flat";
   style?: StyleProp<ViewStyle>;
+  valuePlacement?: "below" | "header";
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -44,15 +45,19 @@ export function RetroSlider({
   onChange,
   onDragStateChange,
   variant = "card",
-  style
+  style,
+  valuePlacement = "below"
 }: RetroSliderProps): React.JSX.Element {
   const [trackLength, setTrackLength] = useState(1);
   const valueRef = useRef(value);
+  const dragStartValueRef = useRef(value);
+  const dragActivatedRef = useRef(false);
   const trackLengthRef = useRef(1);
   const minRef = useRef(min);
   const spanRef = useRef(Math.max(1, max - min));
   const verticalRef = useRef(vertical);
   const onChangeRef = useRef(onChange);
+  const DRAG_ACTIVATION_PX = 4;
 
   useEffect(() => {
     valueRef.current = value;
@@ -71,18 +76,20 @@ export function RetroSlider({
     return clamp((input - min) / span, 0, 1);
   };
 
-  const updateFromLocation = (location: number): void => {
+  const updateFromDelta = (deltaPx: number): void => {
     const liveTrackLength = Math.max(1, trackLengthRef.current);
     if (liveTrackLength <= 2) {
       return;
     }
 
-    const ratioRaw = verticalRef.current
-      ? 1 - location / liveTrackLength
-      : location / liveTrackLength;
+    const ratioDelta = deltaPx / liveTrackLength;
+    const spanValue = spanRef.current;
+    const next = clamp(
+      Math.round(dragStartValueRef.current + ratioDelta * spanValue),
+      minRef.current,
+      minRef.current + spanValue,
+    );
 
-    const ratio = clamp(ratioRaw, 0, 1);
-    const next = Math.round(minRef.current + ratio * spanRef.current);
     if (next !== valueRef.current) {
       valueRef.current = next;
       onChangeRef.current(next);
@@ -94,23 +101,29 @@ export function RetroSlider({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderTerminationRequest: () => false,
-      onPanResponderGrant: (evt) => {
+      onPanResponderGrant: () => {
         onDragStateChange?.(true);
-        const location = verticalRef.current
-          ? evt.nativeEvent.locationY
-          : evt.nativeEvent.locationX;
-        updateFromLocation(location);
+        dragStartValueRef.current = valueRef.current;
+        dragActivatedRef.current = false;
       },
-      onPanResponderMove: (evt) => {
-        const location = verticalRef.current
-          ? evt.nativeEvent.locationY
-          : evt.nativeEvent.locationX;
-        updateFromLocation(location);
+      onPanResponderMove: (_, gestureState) => {
+        const deltaPx = verticalRef.current ? -gestureState.dy : gestureState.dx;
+        if (!dragActivatedRef.current) {
+          if (Math.abs(deltaPx) < DRAG_ACTIVATION_PX) {
+            return;
+          }
+
+          dragActivatedRef.current = true;
+        }
+
+        updateFromDelta(deltaPx);
       },
       onPanResponderRelease: () => {
+        dragActivatedRef.current = false;
         onDragStateChange?.(false);
       },
       onPanResponderTerminate: () => {
+        dragActivatedRef.current = false;
         onDragStateChange?.(false);
       }
     })
@@ -128,10 +141,18 @@ export function RetroSlider({
   const ratio = valueToRatio(valueRef.current);
   const thumbOffset = clamp(ratio * trackLength, 0, trackLength);
   const isFlat = variant === "flat";
+  const showHeaderValue = valuePlacement === "header";
 
   return (
     <View style={[styles.wrapper, isFlat && styles.wrapperFlat, style]}>
-      <Text style={[styles.label, isFlat && styles.labelFlat]}>{label}</Text>
+      {showHeaderValue ? (
+        <View style={[styles.headerRow, isFlat && styles.headerRowFlat]}>
+          <Text style={[styles.label, isFlat && styles.labelFlat, styles.labelHeader]}>{label}</Text>
+          <Text style={[styles.value, isFlat && styles.valueFlat, styles.valueHeader]}>{valueRef.current}</Text>
+        </View>
+      ) : (
+        <Text style={[styles.label, isFlat && styles.labelFlat]}>{label}</Text>
+      )}
       <View
         style={[
           styles.track,
@@ -174,7 +195,9 @@ export function RetroSlider({
           ]}
         />
       </View>
-      <Text style={[styles.value, isFlat && styles.valueFlat]}>{valueRef.current}</Text>
+      {!showHeaderValue ? (
+        <Text style={[styles.value, isFlat && styles.valueFlat]}>{valueRef.current}</Text>
+      ) : null}
     </View>
   );
 }
@@ -199,11 +222,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     justifyContent: "flex-start"
   },
+  headerRow: {
+    width: "100%",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8
+  },
+  headerRowFlat: {
+    marginBottom: 6
+  },
   label: {
     fontFamily: "monospace",
     fontSize: 12,
     color: palette.textSecondary,
     marginBottom: 8
+  },
+  labelHeader: {
+    marginBottom: 0,
+    textAlign: "left"
   },
   labelFlat: {
     marginBottom: 6,
@@ -218,6 +255,10 @@ const styles = StyleSheet.create({
   valueFlat: {
     marginTop: 6,
     textAlign: "center"
+  },
+  valueHeader: {
+    marginTop: 0,
+    textAlign: "right"
   },
   track: {
     borderRadius: 10,
@@ -252,10 +293,6 @@ const styles = StyleSheet.create({
     backgroundColor: palette.knob,
     borderWidth: 3,
     borderColor: palette.knobDark,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4,
-    shadowRadius: 3,
     elevation: 4
   }
 });

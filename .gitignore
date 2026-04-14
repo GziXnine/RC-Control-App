@@ -5,3 +5,4 @@ android/
 ios/
 *.log
 npm-debug.log*
+.vercel

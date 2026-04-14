@@ -10,6 +10,7 @@ import {
 } from "react-native";
 
 import { DriveTuning, TuningLimits } from "../types/protocol";
+import { FIRMWARE_TUNING_SPECS } from "../protocol/tuningCatalog";
 import { palette } from "../theme/palette";
 import { DualRangeBar } from "./DualRangeBar";
 import { RetroSlider } from "./RetroSlider";
@@ -29,7 +30,7 @@ interface TuningModalProps {
   onResetDefaults: () => void;
 }
 
-type TabKey = "DRIVE" | "SERVO" | "AUTO" | "ADV";
+type TabKey = "DRIVE" | "SERVO" | "CORE" | "ADV";
 
 interface AutoControlSpec {
   key: string;
@@ -38,25 +39,23 @@ interface AutoControlSpec {
   label: string;
 }
 
-const AUTO_MAIN: AutoControlSpec[] = [
-  { key: "OBSTACLETHRESHOLDCM", min: 5, max: 80, label: "OBS THRESH" },
-  { key: "PIVOTBIASCM", min: 0, max: 40, label: "PIVOT BIAS" },
-  { key: "BASEPWMFAST", min: 60, max: 255, label: "BASE FAST" },
-  { key: "BASEPWMMEDIUM", min: 60, max: 255, label: "BASE MED" },
-  { key: "BASEPWMSLOW", min: 40, max: 255, label: "BASE SLOW" },
-  { key: "MINPWM", min: 20, max: 180, label: "MIN PWM" }
-];
+const AUTO_MAIN: AutoControlSpec[] = FIRMWARE_TUNING_SPECS
+  .filter((item) => item.section === "CORE")
+  .map((item) => ({
+    key: item.key,
+    min: item.min,
+    max: item.max,
+    label: item.label,
+  }));
 
-const AUTO_ADVANCED: AutoControlSpec[] = [
-  { key: "STEERKPNUM", min: -80, max: 80, label: "STEER KP NUM" },
-  { key: "STEERKPDEN", min: 1, max: 80, label: "STEER KP DEN" },
-  { key: "STEERKDNUM", min: -80, max: 80, label: "STEER KD NUM" },
-  { key: "STEERKDDEN", min: 1, max: 80, label: "STEER KD DEN" },
-  { key: "FOLLOWTARGETCM", min: 5, max: 120, label: "FOLLOW CM" },
-  { key: "FOLLOWBASEPWM", min: 20, max: 255, label: "FOLLOW PWM" },
-  { key: "FOLLOWKPNUM", min: -80, max: 80, label: "FOLLOW KP N" },
-  { key: "FOLLOWKPDEN", min: 1, max: 80, label: "FOLLOW KP D" }
-];
+const AUTO_ADVANCED: AutoControlSpec[] = FIRMWARE_TUNING_SPECS
+  .filter((item) => item.section === "ADVANCED")
+  .map((item) => ({
+    key: item.key,
+    min: item.min,
+    max: item.max,
+    label: item.label,
+  }));
 
 export function TuningModal({
   visible,
@@ -76,7 +75,7 @@ export function TuningModal({
   const [sliderDragging, setSliderDragging] = useState(false);
   const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
 
-  const tabButtons: TabKey[] = ["DRIVE", "SERVO", "AUTO", "ADV"];
+  const tabButtons: TabKey[] = ["DRIVE", "SERVO", "CORE", "ADV"];
   const controlItemStyle = useMemo(() => {
     if (viewportWidth >= 1040) {
       return styles.controlItem25;
@@ -127,6 +126,7 @@ export function TuningModal({
           onChange={(value) => onDriveChange({ max: value })}
           onDragStateChange={setSliderDragging}
           variant="flat"
+          valuePlacement="header"
           style={controlItemStyle}
         />
         <RetroSlider
@@ -137,6 +137,7 @@ export function TuningModal({
           onChange={(value) => onDriveChange({ acc: value })}
           onDragStateChange={setSliderDragging}
           variant="flat"
+          valuePlacement="header"
           style={controlItemStyle}
         />
         <RetroSlider
@@ -147,6 +148,7 @@ export function TuningModal({
           onChange={(value) => onDriveChange({ dead: value })}
           onDragStateChange={setSliderDragging}
           variant="flat"
+          valuePlacement="header"
           style={controlItemStyle}
         />
         <RetroSlider
@@ -157,6 +159,7 @@ export function TuningModal({
           onChange={(value) => onDriveChange({ turn: value })}
           onDragStateChange={setSliderDragging}
           variant="flat"
+          valuePlacement="header"
           style={controlItemStyle}
         />
         <RetroSlider
@@ -167,6 +170,7 @@ export function TuningModal({
           onChange={(value) => onDriveChange({ servoStep: value })}
           onDragStateChange={setSliderDragging}
           variant="flat"
+          valuePlacement="header"
           style={controlItemStyle}
         />
       </View>
@@ -187,6 +191,7 @@ export function TuningModal({
             onChange={item.update}
             onDragStateChange={setSliderDragging}
             variant="flat"
+            valuePlacement="header"
             style={styles.rangeItemFullWidth}
           />
         ))}
@@ -207,6 +212,7 @@ export function TuningModal({
             onChange={(value) => onAutoChange(item.key, value)}
             onDragStateChange={setSliderDragging}
             variant="flat"
+            valuePlacement="header"
             style={controlItemStyle}
           />
         ))}
@@ -223,7 +229,7 @@ export function TuningModal({
       return renderServoTab();
     }
 
-    if (activeTab === "AUTO") {
+    if (activeTab === "CORE") {
       return renderAutoControls(AUTO_MAIN);
     }
 

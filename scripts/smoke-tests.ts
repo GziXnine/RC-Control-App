@@ -14,9 +14,15 @@ import {
   buildServoFrame,
   buildStopFrame,
   buildTuningFrame,
-  parseCommandAckFrame,
   parseTelemetryFrame,
 } from "../src/protocol/frames";
+import {
+  DEFAULT_FIRMWARE_TUNING,
+  FIRMWARE_TUNING_KEYS,
+  FIRMWARE_TUNING_LIMITS,
+  FIRMWARE_TUNING_SPECS,
+  sanitizeFirmwareTuning,
+} from "../src/protocol/tuningCatalog";
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -26,22 +32,18 @@ function wait(ms: number): Promise<void> {
 
 async function testProtocolFrames(): Promise<void> {
   assert.equal(buildStopFrame(), "STOP;");
-  assert.equal(buildModeFrame("AUTO"), "MODE:AUTO;");
-  assert.equal(buildMotorFrame({ left: 280, right: -340 }), "M:255,-255;");
-  assert.equal(buildServoFrame(2, 188), "S2:180;");
-  assert.equal(buildTuningFrame("base pwm fast", 175.8), "T:BASEPWMFAST=176;");
+  assert.equal(buildModeFrame("AUTO"), "A=1;");
+  assert.equal(buildModeFrame("MANUAL"), "A=0;");
+  assert.equal(buildMotorFrame({ left: 280, right: -340 }), "M=255,-255;");
+  assert.equal(buildServoFrame(2, 188), "S2=180;");
+  assert.equal(buildTuningFrame("th", 19.6), "TH=20;");
 
-  const telemetry = parseTelemetryFrame(
-    "R:A,1,34,25,28,120,118,90,95,30,1,7,140,3,1",
-  );
+  const telemetry = parseTelemetryFrame("T=34,25,28,A,120,118");
   assert.ok(telemetry);
   assert.equal(telemetry?.mode, "AUTO");
   assert.equal(telemetry?.frontCm, 34);
-
-  const ack = parseCommandAckFrame("ACK:T:MAX=210");
-  const nack = parseCommandAckFrame("NACK:M:10,10");
-  assert.deepEqual(ack, { accepted: true, frame: "T:MAX=210" });
-  assert.deepEqual(nack, { accepted: false, frame: "M:10,10" });
+  assert.equal(telemetry?.motorLeft, 120);
+  assert.equal(telemetry?.motorRight, 118);
 }
 
 async function testJoystickMath(): Promise<void> {
@@ -64,7 +66,7 @@ async function testJoystickMath(): Promise<void> {
   assert.ok(limited.right <= 12);
 }
 
-async function testQueueAndAckGate(): Promise<void> {
+async function testQueueWithoutAck(): Promise<void> {
   const sent: string[] = [];
 
   const engine = new PriorityCommandEngine(
@@ -74,23 +76,16 @@ async function testQueueAndAckGate(): Promise<void> {
     },
     {
       periodMs: 10,
-      ackTimeoutMs: 40,
-      maxRetries: 2,
     },
   );
 
   engine.start();
   engine.queueMode("AUTO");
+  engine.queueMotor({ left: 120, right: 120 });
 
-  await wait(20);
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0], "MODE:AUTO;");
-
-  await wait(45);
-  assert.ok(sent.length >= 2);
-
-  engine.acknowledge("MODE:AUTO", true);
-  await wait(20);
+  await wait(70);
+  assert.ok(sent.includes("A=1;"));
+  assert.ok(sent.some((frame) => frame.startsWith("M=")));
   assert.equal(engine.getQueueSize(), 0);
   engine.stop();
 }
@@ -102,30 +97,50 @@ async function testPriorityFairness(): Promise<void> {
   engine = new PriorityCommandEngine(
     async (frame) => {
       sent.push(frame);
-      setTimeout(() => {
-        engine.acknowledge(frame, true);
-      }, 0);
       return true;
     },
     {
       periodMs: 10,
-      ackTimeoutMs: 80,
-      maxRetries: 2,
     },
   );
 
   engine.start();
   engine.queueMotor({ left: 170, right: 160 });
   engine.queueServo(1, 120);
-  engine.queueTuning("MAX", 220);
+  engine.queueTuning("TH", 22);
 
   await wait(260);
 
-  assert.ok(sent.some((frame) => frame.startsWith("M:")));
-  assert.ok(sent.some((frame) => frame.startsWith("S1:")));
-  assert.ok(sent.some((frame) => frame.startsWith("T:MAX=")));
+  assert.ok(sent.some((frame) => frame.startsWith("M=")));
+  assert.ok(sent.some((frame) => frame.startsWith("S1=")));
+  assert.ok(sent.some((frame) => frame.startsWith("TH=")));
 
   engine.stop();
+}
+
+async function testTuningCatalogIntegrity(): Promise<void> {
+  assert.equal(FIRMWARE_TUNING_KEYS.length, FIRMWARE_TUNING_SPECS.length);
+  assert.equal(new Set(FIRMWARE_TUNING_KEYS).size, FIRMWARE_TUNING_KEYS.length);
+
+  const sanitized = sanitizeFirmwareTuning({
+    KP: 500,
+    KD: -20,
+    TH: 3,
+    TS: 400,
+    BL: 0,
+  });
+
+  assert.equal(sanitized.KP, FIRMWARE_TUNING_LIMITS.KP.max);
+  assert.equal(sanitized.KD, FIRMWARE_TUNING_LIMITS.KD.min);
+  assert.equal(sanitized.TH, FIRMWARE_TUNING_LIMITS.TH.min);
+  assert.equal(sanitized.TS, FIRMWARE_TUNING_LIMITS.TS.max);
+  assert.equal(sanitized.BL, FIRMWARE_TUNING_LIMITS.BL.min);
+
+  for (const key of FIRMWARE_TUNING_KEYS) {
+    const value = DEFAULT_FIRMWARE_TUNING[key];
+    const bounds = FIRMWARE_TUNING_LIMITS[key];
+    assert.ok(value >= bounds.min && value <= bounds.max);
+  }
 }
 
 async function testReconnectPolicy(): Promise<void> {
@@ -143,8 +158,9 @@ async function run(): Promise<void> {
   const tests: Array<{ name: string; run: () => Promise<void> }> = [
     { name: "protocol frames", run: testProtocolFrames },
     { name: "joystick mapping", run: testJoystickMath },
-    { name: "ack gate", run: testQueueAndAckGate },
+    { name: "queue without ack", run: testQueueWithoutAck },
     { name: "priority fairness", run: testPriorityFairness },
+    { name: "tuning catalog integrity", run: testTuningCatalogIntegrity },
     { name: "reconnect policy", run: testReconnectPolicy },
   ];
 

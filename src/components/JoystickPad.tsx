@@ -3,6 +3,7 @@ import {
   Animated,
   LayoutChangeEvent,
   PanResponder,
+  Platform,
   StyleSheet,
   Text,
   View
@@ -30,6 +31,7 @@ function clamp(value: number, min: number, max: number): number {
 export function JoystickPad({ onMove, onRelease }: JoystickPadProps): React.JSX.Element {
   const [size, setSize] = useState(220);
   const knobOffset = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const useNativeDriver = Platform.OS !== "web";
 
   const geometry = useMemo(() => {
     const handleRadius = 30;
@@ -66,7 +68,7 @@ export function JoystickPad({ onMove, onRelease }: JoystickPadProps): React.JSX.
           toValue: { x: 0, y: 0 },
           bounciness: 10,
           speed: 18,
-          useNativeDriver: true
+          useNativeDriver
         }).start();
         onRelease();
       },
@@ -75,7 +77,7 @@ export function JoystickPad({ onMove, onRelease }: JoystickPadProps): React.JSX.
           toValue: { x: 0, y: 0 },
           bounciness: 8,
           speed: 16,
-          useNativeDriver: true
+          useNativeDriver
         }).start();
         onRelease();
       }
@@ -165,10 +167,6 @@ const styles = StyleSheet.create({
     backgroundColor: palette.knob,
     borderWidth: 4,
     borderColor: palette.knobDark,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.4,
-    shadowRadius: 4,
     elevation: 5
   }
 });

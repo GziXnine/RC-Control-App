@@ -21,6 +21,7 @@ interface DualRangeBarProps {
   onDragStateChange?: (dragging: boolean) => void;
   variant?: "card" | "flat";
   style?: StyleProp<ViewStyle>;
+  valuePlacement?: "below" | "header";
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -44,10 +45,14 @@ export function DualRangeBar({
   onChange,
   onDragStateChange,
   variant = "card",
-  style
+  style,
+  valuePlacement = "below"
 }: DualRangeBarProps): React.JSX.Element {
   const [trackWidth, setTrackWidth] = useState(1);
   const activeThumbRef = useRef<"low" | "high">("low");
+  const dragStartLowRef = useRef(lowValue);
+  const dragStartHighRef = useRef(highValue);
+  const dragActivatedRef = useRef(false);
   const trackWidthRef = useRef(1);
   const minRef = useRef(min);
   const maxRef = useRef(max);
@@ -55,6 +60,7 @@ export function DualRangeBar({
   const highRef = useRef(highValue);
   const spanRef = useRef(Math.max(1, max - min));
   const onChangeRef = useRef(onChange);
+  const DRAG_ACTIVATION_PX = 4;
 
   useEffect(() => {
     minRef.current = min;
@@ -69,11 +75,6 @@ export function DualRangeBar({
 
   const toRatio = (value: number): number => clamp((value - min) / span, 0, 1);
 
-  const fromLocation = (locationX: number): number => {
-    const ratio = clamp(locationX / Math.max(1, trackWidthRef.current), 0, 1);
-    return Math.round(minRef.current + ratio * spanRef.current);
-  };
-
   const lowRatio = toRatio(lowValue);
   const highRatio = toRatio(highValue);
 
@@ -83,18 +84,26 @@ export function DualRangeBar({
     setTrackWidth(safeWidth);
   };
 
-  const updateValue = (locationX: number): void => {
+  const updateValue = (deltaX: number): void => {
     if (trackWidthRef.current <= 2) {
       return;
     }
 
-    const next = fromLocation(locationX);
+    const nextDelta = Math.round((deltaX / trackWidthRef.current) * spanRef.current);
     if (activeThumbRef.current === "low") {
-      const nextLow = clamp(next, minRef.current, highRef.current);
-      onChangeRef.current(nextLow, highRef.current);
+      const nextLow = clamp(
+        dragStartLowRef.current + nextDelta,
+        minRef.current,
+        dragStartHighRef.current,
+      );
+      onChangeRef.current(nextLow, dragStartHighRef.current);
     } else {
-      const nextHigh = clamp(next, lowRef.current, maxRef.current);
-      onChangeRef.current(lowRef.current, nextHigh);
+      const nextHigh = clamp(
+        dragStartHighRef.current + nextDelta,
+        dragStartLowRef.current,
+        maxRef.current,
+      );
+      onChangeRef.current(dragStartLowRef.current, nextHigh);
     }
   };
 
@@ -105,31 +114,51 @@ export function DualRangeBar({
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (evt) => {
         onDragStateChange?.(true);
+        dragActivatedRef.current = false;
+        dragStartLowRef.current = lowRef.current;
+        dragStartHighRef.current = highRef.current;
         const locationX = evt.nativeEvent.locationX;
         const liveTrackWidth = Math.max(1, trackWidthRef.current);
         const liveSpan = Math.max(1, spanRef.current);
         const lowX = ((lowRef.current - minRef.current) / liveSpan) * liveTrackWidth;
         const highX = ((highRef.current - minRef.current) / liveSpan) * liveTrackWidth;
         activeThumbRef.current = Math.abs(locationX - lowX) < Math.abs(locationX - highX) ? "low" : "high";
-        updateValue(locationX);
       },
-      onPanResponderMove: (evt) => {
-        updateValue(evt.nativeEvent.locationX);
+      onPanResponderMove: (_, gestureState) => {
+        if (!dragActivatedRef.current) {
+          if (Math.abs(gestureState.dx) < DRAG_ACTIVATION_PX) {
+            return;
+          }
+
+          dragActivatedRef.current = true;
+        }
+
+        updateValue(gestureState.dx);
       },
       onPanResponderRelease: () => {
+        dragActivatedRef.current = false;
         onDragStateChange?.(false);
       },
       onPanResponderTerminate: () => {
+        dragActivatedRef.current = false;
         onDragStateChange?.(false);
       }
     })
   ).current;
 
   const isFlat = variant === "flat";
+  const showHeaderValue = valuePlacement === "header";
 
   return (
     <View style={[styles.wrapper, isFlat && styles.wrapperFlat, style]}>
-      <Text style={[styles.label, isFlat && styles.labelFlat]}>{label}</Text>
+      {showHeaderValue ? (
+        <View style={[styles.headerRow, isFlat && styles.headerRowFlat]}>
+          <Text style={[styles.label, isFlat && styles.labelFlat, styles.labelHeader]}>{label}</Text>
+          <Text style={[styles.value, isFlat && styles.valueFlat, styles.valueHeader]}>{`${lowValue} - ${highValue}`}</Text>
+        </View>
+      ) : (
+        <Text style={[styles.label, isFlat && styles.labelFlat]}>{label}</Text>
+      )}
       <View style={[styles.track, isFlat && styles.trackFlat]} onLayout={onLayout} {...responder.panHandlers}>
         <View
           style={[
@@ -143,7 +172,9 @@ export function DualRangeBar({
         <View style={[styles.thumb, { left: lowRatio * trackWidth - 14 }]} />
         <View style={[styles.thumb, { left: highRatio * trackWidth - 14 }]} />
       </View>
-      <Text style={[styles.value, isFlat && styles.valueFlat]}>{`${lowValue} - ${highValue}`}</Text>
+      {!showHeaderValue ? (
+        <Text style={[styles.value, isFlat && styles.valueFlat]}>{`${lowValue} - ${highValue}`}</Text>
+      ) : null}
     </View>
   );
 }
@@ -165,10 +196,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     paddingVertical: 2
   },
+  headerRow: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between"
+  },
+  headerRowFlat: {
+    marginBottom: 2
+  },
   label: {
     color: palette.textSecondary,
     fontFamily: "monospace",
     fontSize: 12
+  },
+  labelHeader: {
+    textAlign: "left"
   },
   labelFlat: {
     marginBottom: 2
@@ -208,5 +251,9 @@ const styles = StyleSheet.create({
   },
   valueFlat: {
     marginTop: 0
+  },
+  valueHeader: {
+    marginTop: 0,
+    textAlign: "right"
   }
 });

@@ -13,19 +13,14 @@ type SendFn = (frame: string) => Promise<boolean>;
 
 interface EngineOptions {
   periodMs?: number;
-  ackTimeoutMs?: number;
-  maxRetries?: number;
   onError?: (error: unknown) => void;
   onFrameSent?: (frame: string) => void;
-  onFrameDropped?: (
-    frame: string,
-    reason: "timeout" | "nack" | "transport",
-  ) => void;
+  onFrameDropped?: (frame: string, reason: "transport" | "invalid-frame") => void;
 }
 
 interface PendingState {
   stop: boolean;
-  mode: RobotMode | null;
+  modeQueue: RobotMode[];
   motor: MotorCommand | null;
   servo: Map<1 | 2 | 3, number>;
   tuning: Map<string, number>;
@@ -43,36 +38,28 @@ interface PendingFrame {
   kind: PriorityClass;
   frame: string;
   onCommit: () => void;
-}
-
-interface InFlightFrame extends PendingFrame {
-  sentAtMs: number;
-  attempts: number;
+  onDrop?: () => void;
 }
 
 const DEFAULT_PERIOD_MS = 25;
-const DEFAULT_ACK_TIMEOUT_MS = 220;
-const DEFAULT_MAX_RETRIES = 3;
 const MOTOR_INTERVAL_MS = 50;
 const SERVO_INTERVAL_MS = 100;
 const TUNING_MOTOR_GUARD_MS = 15;
+const MAX_MODE_QUEUE = 3;
 
 export class PriorityCommandEngine {
   private readonly sendFn: SendFn;
   private readonly periodMs: number;
-  private readonly ackTimeoutMs: number;
-  private readonly maxRetries: number;
   private readonly options: EngineOptions;
 
   private timer: ReturnType<typeof setInterval> | null = null;
   private sending = false;
-  private inFlight: InFlightFrame | null = null;
   private nextMotorAtMs = 0;
   private nextServoAtMs = 0;
 
   private pending: PendingState = {
     stop: false,
-    mode: null,
+    modeQueue: [],
     motor: null,
     servo: new Map(),
     tuning: new Map(),
@@ -89,8 +76,6 @@ export class PriorityCommandEngine {
   constructor(sendFn: SendFn, options?: EngineOptions) {
     this.sendFn = sendFn;
     this.periodMs = options?.periodMs ?? DEFAULT_PERIOD_MS;
-    this.ackTimeoutMs = options?.ackTimeoutMs ?? DEFAULT_ACK_TIMEOUT_MS;
-    this.maxRetries = options?.maxRetries ?? DEFAULT_MAX_RETRIES;
     this.options = options ?? {};
   }
 
@@ -114,14 +99,18 @@ export class PriorityCommandEngine {
   queueStop(): void {
     this.pending.stop = true;
     this.pending.motor = { left: 0, right: 0 };
-
-    if (this.inFlight !== null && this.inFlight.kind !== "STOP") {
-      this.inFlight = null;
-    }
   }
 
   queueMode(mode: RobotMode): void {
-    this.pending.mode = mode;
+    const lastQueued = this.pending.modeQueue[this.pending.modeQueue.length - 1] ?? null;
+    if (lastQueued === mode) {
+      return;
+    }
+
+    this.pending.modeQueue.push(mode);
+    if (this.pending.modeQueue.length > MAX_MODE_QUEUE) {
+      this.pending.modeQueue.splice(0, this.pending.modeQueue.length - MAX_MODE_QUEUE);
+    }
   }
 
   queueMotor(command: MotorCommand): void {
@@ -136,7 +125,11 @@ export class PriorityCommandEngine {
   }
 
   queueTuning(key: string, value: number): void {
-    const normalized = key.toUpperCase();
+    const normalized = key.toUpperCase().replace(/[^A-Z0-9_]/g, "");
+    if (normalized.length === 0) {
+      return;
+    }
+
     if (!this.pending.tuning.has(normalized)) {
       this.pending.tuningOrder.push(normalized);
     }
@@ -146,53 +139,25 @@ export class PriorityCommandEngine {
 
   clearPending(): void {
     this.pending.stop = false;
-    this.pending.mode = null;
+    this.pending.modeQueue = [];
     this.pending.motor = null;
     this.pending.servo.clear();
     this.pending.tuning.clear();
     this.pending.tuningOrder = [];
-    this.inFlight = null;
   }
 
   getQueueSize(): number {
     return (
       (this.pending.stop ? 1 : 0) +
-      (this.pending.mode ? 1 : 0) +
+      this.pending.modeQueue.length +
       (this.pending.motor ? 1 : 0) +
       this.pending.servo.size +
-      this.pending.tuning.size +
-      (this.inFlight ? 1 : 0)
+      this.pending.tuning.size
     );
   }
 
-  acknowledge(frame: string, accepted: boolean): void {
-    if (this.inFlight === null) {
-      return;
-    }
-
-    const incoming = this.normalizeFrame(frame);
-    const expected = this.normalizeFrame(this.inFlight.frame);
-
-    if (incoming !== expected) {
-      return;
-    }
-
-    if (accepted) {
-      this.inFlight.onCommit();
-      this.inFlight = null;
-      return;
-    }
-
-    this.options.onFrameDropped?.(this.inFlight.frame, "nack");
-
-    if (this.inFlight.attempts >= this.maxRetries) {
-      this.inFlight = null;
-      return;
-    }
-
-    // Force immediate retry on next scheduler tick.
-    this.inFlight.sentAtMs = 0;
-  }
+  // Intentionally retained as a no-op for compatibility with older call sites.
+  acknowledge(_frame: string, _accepted: boolean): void {}
 
   private async flushOnce(): Promise<void> {
     if (this.sending) {
@@ -200,12 +165,6 @@ export class PriorityCommandEngine {
     }
 
     const now = Date.now();
-
-    if (this.inFlight !== null) {
-      await this.handleInFlight(now);
-      return;
-    }
-
     const nextFrame = this.pickNextFrame(now);
     if (nextFrame === null) {
       return;
@@ -215,60 +174,16 @@ export class PriorityCommandEngine {
     try {
       const success = await this.sendFn(nextFrame.frame);
       if (success) {
-        this.inFlight = {
-          ...nextFrame,
-          attempts: 1,
-          sentAtMs: now,
-        };
-
+        nextFrame.onCommit();
         this.options.onFrameSent?.(nextFrame.frame);
       } else {
+        nextFrame.onDrop?.();
         this.options.onFrameDropped?.(nextFrame.frame, "transport");
       }
     } catch (error) {
       this.options.onError?.(error);
-    } finally {
-      this.sending = false;
-    }
-  }
-
-  private async handleInFlight(now: number): Promise<void> {
-    if (this.inFlight === null) {
-      return;
-    }
-
-    if (now - this.inFlight.sentAtMs < this.ackTimeoutMs) {
-      return;
-    }
-
-    if (this.inFlight.attempts >= this.maxRetries) {
-      this.options.onFrameDropped?.(this.inFlight.frame, "timeout");
-      this.inFlight = null;
-      return;
-    }
-
-    this.sending = true;
-    try {
-      const retryFrame = this.inFlight.frame;
-      const success = await this.sendFn(retryFrame);
-      if (!success) {
-        this.options.onFrameDropped?.(retryFrame, "transport");
-      }
-
-      if (this.inFlight !== null) {
-        this.inFlight.attempts += 1;
-        this.inFlight.sentAtMs = Date.now();
-      }
-
-      if (success) {
-        this.options.onFrameSent?.(retryFrame);
-      }
-    } catch (error) {
-      this.options.onError?.(error);
-      if (this.inFlight !== null) {
-        this.inFlight.attempts += 1;
-        this.inFlight.sentAtMs = Date.now();
-      }
+      nextFrame.onDrop?.();
+      this.options.onFrameDropped?.(nextFrame.frame, "transport");
     } finally {
       this.sending = false;
     }
@@ -286,22 +201,28 @@ export class PriorityCommandEngine {
       };
     }
 
-    if (this.pending.mode !== null) {
-      const mode = this.pending.mode;
-      if (this.lastCommitted.mode === mode) {
-        this.pending.mode = null;
-      } else {
-        return {
-          kind: "MODE",
-          frame: buildModeFrame(mode),
-          onCommit: () => {
-            this.lastCommitted.mode = mode;
-            if (this.pending.mode === mode) {
-              this.pending.mode = null;
-            }
-          },
-        };
+    while (this.pending.modeQueue.length > 0) {
+      const mode = this.pending.modeQueue[0];
+      if (!mode) {
+        this.pending.modeQueue.shift();
+        continue;
       }
+
+      if (this.lastCommitted.mode === mode) {
+        this.pending.modeQueue.shift();
+        continue;
+      }
+
+      return {
+        kind: "MODE",
+        frame: buildModeFrame(mode),
+        onCommit: () => {
+          this.lastCommitted.mode = mode;
+          if (this.pending.modeQueue[0] === mode) {
+            this.pending.modeQueue.shift();
+          }
+        },
+      };
     }
 
     const motorFrame = this.peekMotorFrame();
@@ -334,11 +255,12 @@ export class PriorityCommandEngine {
           frame: tuningFrame.frame,
           onCommit: () => {
             this.lastCommitted.tuning.set(tuningFrame.key, tuningFrame.value);
-            if (
-              this.pending.tuning.get(tuningFrame.key) === tuningFrame.value
-            ) {
+            if (this.pending.tuning.get(tuningFrame.key) === tuningFrame.value) {
               this.pending.tuning.delete(tuningFrame.key);
             }
+            this.removeTuningOrderKey(tuningFrame.key);
+          },
+          onDrop: () => {
             this.removeTuningOrderKey(tuningFrame.key);
           },
         };
@@ -372,6 +294,9 @@ export class PriorityCommandEngine {
           if (this.pending.tuning.get(tuningFrame.key) === tuningFrame.value) {
             this.pending.tuning.delete(tuningFrame.key);
           }
+          this.removeTuningOrderKey(tuningFrame.key);
+        },
+        onDrop: () => {
           this.removeTuningOrderKey(tuningFrame.key);
         },
       };
@@ -444,7 +369,6 @@ export class PriorityCommandEngine {
       }
 
       const value = this.pending.tuning.get(key);
-
       if (value === undefined) {
         this.pending.tuningOrder.shift();
         continue;
@@ -456,8 +380,16 @@ export class PriorityCommandEngine {
         continue;
       }
 
+      const frame = buildTuningFrame(key, value);
+      if (frame.length === 0) {
+        this.pending.tuning.delete(key);
+        this.pending.tuningOrder.shift();
+        this.options.onFrameDropped?.(key, "invalid-frame");
+        continue;
+      }
+
       return {
-        frame: buildTuningFrame(key, value),
+        frame,
         key,
         value,
       };
@@ -471,14 +403,5 @@ export class PriorityCommandEngine {
     if (index >= 0) {
       this.pending.tuningOrder.splice(index, 1);
     }
-  }
-
-  private normalizeFrame(frame: string): string {
-    const trimmed = frame.trim().toUpperCase();
-    if (trimmed.endsWith(";")) {
-      return trimmed.slice(0, -1);
-    }
-
-    return trimmed;
   }
 }
