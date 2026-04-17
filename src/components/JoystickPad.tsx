@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   LayoutChangeEvent,
@@ -32,6 +32,44 @@ export function JoystickPad({ onMove, onRelease }: JoystickPadProps): React.JSX.
   const [size, setSize] = useState(220);
   const knobOffset = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const useNativeDriver = Platform.OS !== "web";
+  const onMoveRef = useRef(onMove);
+  const onReleaseRef = useRef(onRelease);
+  const latestStickRef = useRef({ x: 0, y: 0 });
+  const draggingRef = useRef(false);
+  const repeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    onMoveRef.current = onMove;
+    onReleaseRef.current = onRelease;
+  }, [onMove, onRelease]);
+
+  const stopRepeat = (): void => {
+    if (repeatTimerRef.current !== null) {
+      clearInterval(repeatTimerRef.current);
+      repeatTimerRef.current = null;
+    }
+  };
+
+  const startRepeat = (): void => {
+    if (repeatTimerRef.current !== null) {
+      return;
+    }
+
+    repeatTimerRef.current = setInterval(() => {
+      if (!draggingRef.current) {
+        return;
+      }
+
+      const point = latestStickRef.current;
+      onMoveRef.current(point.x, point.y);
+    }, 20);
+  };
+
+  useEffect(() => {
+    return () => {
+      stopRepeat();
+    };
+  }, []);
 
   const geometry = useMemo(() => {
     const handleRadius = 30;
@@ -50,7 +88,8 @@ export function JoystickPad({ onMove, onRelease }: JoystickPadProps): React.JSX.
 
     const normalizedX = clamp(x / geometry.radius, -1, 1);
     const normalizedY = clamp(-y / geometry.radius, -1, 1);
-    onMove(normalizedX, normalizedY);
+    latestStickRef.current = { x: normalizedX, y: normalizedY };
+    onMoveRef.current(normalizedX, normalizedY);
   };
 
   const panResponder = useRef(
@@ -59,27 +98,34 @@ export function JoystickPad({ onMove, onRelease }: JoystickPadProps): React.JSX.
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: () => {
         knobOffset.stopAnimation();
+        draggingRef.current = true;
+        latestStickRef.current = { x: 0, y: 0 };
+        startRepeat();
       },
       onPanResponderMove: (_, gestureState) => {
         processPoint(gestureState.dx, gestureState.dy);
       },
       onPanResponderRelease: () => {
+        draggingRef.current = false;
+        stopRepeat();
         Animated.spring(knobOffset, {
           toValue: { x: 0, y: 0 },
           bounciness: 10,
           speed: 18,
           useNativeDriver
         }).start();
-        onRelease();
+        onReleaseRef.current();
       },
       onPanResponderTerminate: () => {
+        draggingRef.current = false;
+        stopRepeat();
         Animated.spring(knobOffset, {
           toValue: { x: 0, y: 0 },
           bounciness: 8,
           speed: 16,
           useNativeDriver
         }).start();
-        onRelease();
+        onReleaseRef.current();
       }
     })
   ).current;

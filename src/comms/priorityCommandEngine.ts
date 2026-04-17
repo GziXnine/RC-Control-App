@@ -48,6 +48,7 @@ const DEFAULT_PERIOD_MS = 25;
 const MOTOR_INTERVAL_MS = 50;
 const SERVO_INTERVAL_MS = 100;
 const TUNING_MOTOR_GUARD_MS = 15;
+const TUNING_INTERVAL_MS = 80;
 const MAX_MODE_QUEUE = 3;
 
 export class PriorityCommandEngine {
@@ -59,6 +60,7 @@ export class PriorityCommandEngine {
   private sending = false;
   private nextMotorAtMs = 0;
   private nextServoAtMs = 0;
+  private nextTuningAtMs = 0;
 
   private pending: PendingState = {
     stop: false,
@@ -151,6 +153,7 @@ export class PriorityCommandEngine {
     this.pending.servo.clear();
     this.pending.tuning.clear();
     this.pending.tuningOrder = [];
+    this.nextTuningAtMs = 0;
   }
 
   getQueueSize(): number {
@@ -238,6 +241,7 @@ export class PriorityCommandEngine {
 
     const motorReady = motorFrame !== null && now >= this.nextMotorAtMs;
     const servoReady = servoFrame !== null && now >= this.nextServoAtMs;
+    const tuningReady = tuningFrame !== null && now >= this.nextTuningAtMs;
 
     if (servoReady && servoFrame !== null) {
       return {
@@ -253,7 +257,7 @@ export class PriorityCommandEngine {
       };
     }
 
-    if (tuningFrame !== null) {
+    if (tuningReady && tuningFrame !== null) {
       const canSendBeforeMotor =
         !motorFrame || now + TUNING_MOTOR_GUARD_MS < this.nextMotorAtMs;
       if (canSendBeforeMotor) {
@@ -266,11 +270,13 @@ export class PriorityCommandEngine {
               this.pending.tuning.get(tuningFrame.key) === tuningFrame.value
             ) {
               this.pending.tuning.delete(tuningFrame.key);
+              this.removeTuningOrderKey(tuningFrame.key);
             }
-            this.removeTuningOrderKey(tuningFrame.key);
+            this.nextTuningAtMs = Date.now() + TUNING_INTERVAL_MS;
           },
           onDrop: () => {
-            this.removeTuningOrderKey(tuningFrame.key);
+            // Keep dropped tuning values queued so transport hiccups retry automatically.
+            this.nextTuningAtMs = Date.now() + TUNING_INTERVAL_MS;
           },
         };
       }
@@ -294,7 +300,7 @@ export class PriorityCommandEngine {
       };
     }
 
-    if (tuningFrame !== null && servoFrame === null) {
+    if (tuningReady && tuningFrame !== null && servoFrame === null) {
       return {
         kind: "TUNING",
         frame: tuningFrame.frame,
@@ -302,11 +308,13 @@ export class PriorityCommandEngine {
           this.lastCommitted.tuning.set(tuningFrame.key, tuningFrame.value);
           if (this.pending.tuning.get(tuningFrame.key) === tuningFrame.value) {
             this.pending.tuning.delete(tuningFrame.key);
+            this.removeTuningOrderKey(tuningFrame.key);
           }
-          this.removeTuningOrderKey(tuningFrame.key);
+          this.nextTuningAtMs = Date.now() + TUNING_INTERVAL_MS;
         },
         onDrop: () => {
-          this.removeTuningOrderKey(tuningFrame.key);
+          // Keep dropped tuning values queued so transport hiccups retry automatically.
+          this.nextTuningAtMs = Date.now() + TUNING_INTERVAL_MS;
         },
       };
     }

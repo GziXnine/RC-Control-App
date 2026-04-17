@@ -24,6 +24,11 @@ interface DualRangeBarProps {
   valuePlacement?: "below" | "header";
 }
 
+const TRACK_HEIGHT = 26;
+const THUMB_SIZE = 36;
+const THUMB_RADIUS = THUMB_SIZE / 2;
+const THUMB_TOP_OFFSET = Math.round((TRACK_HEIGHT - THUMB_SIZE) / 2);
+
 function clamp(value: number, min: number, max: number): number {
   if (value < min) {
     return min;
@@ -77,6 +82,11 @@ export function DualRangeBar({
 
   const lowRatio = toRatio(lowValue);
   const highRatio = toRatio(highValue);
+  const usableTrackWidth = Math.max(1, trackWidth - THUMB_SIZE);
+  const lowThumbLeft = lowRatio * usableTrackWidth;
+  const highThumbLeft = highRatio * usableTrackWidth;
+  const lowCenter = lowThumbLeft + THUMB_RADIUS;
+  const highCenter = highThumbLeft + THUMB_RADIUS;
 
   const onLayout = (event: LayoutChangeEvent): void => {
     const safeWidth = Math.max(1, event.nativeEvent.layout.width);
@@ -89,7 +99,8 @@ export function DualRangeBar({
       return;
     }
 
-    const nextDelta = Math.round((deltaX / trackWidthRef.current) * spanRef.current);
+    const usableWidth = Math.max(1, trackWidthRef.current - THUMB_SIZE);
+    const nextDelta = Math.round((deltaX / usableWidth) * spanRef.current);
     if (activeThumbRef.current === "low") {
       const nextLow = clamp(
         dragStartLowRef.current + nextDelta,
@@ -120,9 +131,17 @@ export function DualRangeBar({
         const locationX = evt.nativeEvent.locationX;
         const liveTrackWidth = Math.max(1, trackWidthRef.current);
         const liveSpan = Math.max(1, spanRef.current);
-        const lowX = ((lowRef.current - minRef.current) / liveSpan) * liveTrackWidth;
-        const highX = ((highRef.current - minRef.current) / liveSpan) * liveTrackWidth;
-        activeThumbRef.current = Math.abs(locationX - lowX) < Math.abs(locationX - highX) ? "low" : "high";
+        const liveUsableWidth = Math.max(1, liveTrackWidth - THUMB_SIZE);
+        const lowX =
+          ((lowRef.current - minRef.current) / liveSpan) * liveUsableWidth +
+          THUMB_RADIUS;
+        const highX =
+          ((highRef.current - minRef.current) / liveSpan) * liveUsableWidth +
+          THUMB_RADIUS;
+        activeThumbRef.current =
+          Math.abs(locationX - lowX) < Math.abs(locationX - highX)
+            ? "low"
+            : "high";
       },
       onPanResponderMove: (_, gestureState) => {
         if (!dragActivatedRef.current) {
@@ -164,13 +183,13 @@ export function DualRangeBar({
           style={[
             styles.rangeFill,
             {
-              left: lowRatio * trackWidth,
-              width: Math.max(4, (highRatio - lowRatio) * trackWidth)
+              left: lowCenter,
+              width: Math.max(2, highCenter - lowCenter)
             }
           ]}
         />
-        <View style={[styles.thumb, { left: lowRatio * trackWidth - 14 }]} />
-        <View style={[styles.thumb, { left: highRatio * trackWidth - 14 }]} />
+        <View style={[styles.thumb, { left: lowThumbLeft - 3}]} />
+        <View style={[styles.thumb, { left: highThumbLeft }]} />
       </View>
       {!showHeaderValue ? (
         <Text style={[styles.value, isFlat && styles.valueFlat]}>{`${lowValue} - ${highValue}`}</Text>
@@ -217,11 +236,12 @@ const styles = StyleSheet.create({
     marginBottom: 2
   },
   track: {
-    height: 22,
+    height: TRACK_HEIGHT,
     borderRadius: 12,
     borderWidth: 2,
     borderColor: palette.knobDark,
-    backgroundColor: "#191f23"
+    backgroundColor: "#191f23",
+    width: "100%"
   },
   trackFlat: {
     backgroundColor: "#131b21"
@@ -230,15 +250,16 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 0,
     bottom: 0,
+    borderRadius: 12,
     backgroundColor: palette.accent,
     opacity: 0.9
   },
   thumb: {
     position: "absolute",
-    top: -7,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    top: THUMB_TOP_OFFSET - 2,
+    width: THUMB_SIZE,
+    height: THUMB_SIZE,
+    borderRadius: THUMB_RADIUS,
     backgroundColor: palette.knob,
     borderWidth: 2,
     borderColor: palette.knobDark

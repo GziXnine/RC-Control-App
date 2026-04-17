@@ -16,7 +16,7 @@ import {
 } from "../comms/reconnectPolicy";
 import { joystickToDifferential, neutralMotor } from "../control/driveMath";
 import { FrameStream } from "../protocol/frameStream";
-import { parseTelemetryFrame } from "../protocol/frames";
+import { parseCommandAckFrame, parseTelemetryFrame } from "../protocol/frames";
 import {
   DEFAULT_FIRMWARE_TUNING,
   FIRMWARE_TUNING_KEYS,
@@ -43,8 +43,8 @@ const DEFAULT_LIMITS: TuningLimits = {
   s1Max: 170,
   s2Min: 20,
   s2Max: 165,
-  s3Min: 0,
-  s3Max: 180,
+  s3Min: 30,
+  s3Max: 90,
 };
 
 const DEFAULT_TELEMETRY: Telemetry = {
@@ -63,8 +63,9 @@ const DEFAULT_TELEMETRY: Telemetry = {
 
 const TUNING_STORAGE_KEY = "competition_robot_tuning_profile_v1";
 const TUNING_PROFILE_VERSION = 1;
-const WRITE_FAILURE_THRESHOLD = 3;
-const TELEMETRY_TIMEOUT_MS = 1800;
+const WRITE_FAILURE_THRESHOLD = 8;
+const TELEMETRY_TIMEOUT_MS = 6000;
+const CONNECT_RX_GRACE_MS = 12000;
 const LINK_MONITOR_INTERVAL_MS = 250;
 const MAX_RECONNECT_ATTEMPTS = 10;
 
@@ -247,6 +248,8 @@ export function useRobotController() {
   const connectedAddressRef = useRef<string | null>(null);
   const writeFailureStreakRef = useRef(0);
   const lastTelemetryAtRef = useRef(0);
+  const connectedAtRef = useRef(0);
+  const hasRxSinceConnectRef = useRef(false);
   const linkDropGuardRef = useRef(false);
   const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -311,6 +314,8 @@ export function useRobotController() {
       linkDropGuardRef.current = true;
       writeFailureStreakRef.current = 0;
       lastTelemetryAtRef.current = 0;
+      connectedAtRef.current = 0;
+      hasRxSinceConnectRef.current = false;
       connectedAddressRef.current = null;
 
       void bluetoothRef.current.disconnect().finally(() => {
@@ -358,6 +363,7 @@ export function useRobotController() {
         const sent = await bluetoothRef.current.write(frame);
         if (sent) {
           setLastFrame(frame);
+          lastTelemetryAtRef.current = Date.now();
           writeFailureStreakRef.current = 0;
         } else if (connectedAddressRef.current !== null) {
           writeFailureStreakRef.current += 1;
@@ -415,10 +421,20 @@ export function useRobotController() {
       }
 
       const lastTelemetry = lastTelemetryAtRef.current;
+      const connectedAt = connectedAtRef.current;
+      const inConnectGrace =
+        !hasRxSinceConnectRef.current &&
+        connectedAt > 0 &&
+        Date.now() - connectedAt < CONNECT_RX_GRACE_MS;
+
+      if (inConnectGrace) {
+        return;
+      }
+
       if (
         hasTelemetryTimedOut(lastTelemetry, Date.now(), TELEMETRY_TIMEOUT_MS)
       ) {
-        handleLinkLoss("Telemetry timeout. Robot link is unstable or offline.");
+        handleLinkLoss("Bluetooth link timeout. No recent telemetry or ACK frames.");
       }
     }, LINK_MONITOR_INTERVAL_MS);
 
@@ -431,9 +447,12 @@ export function useRobotController() {
     const frames = streamRef.current.pushChunk(chunk);
 
     for (const frame of frames) {
+      const now = Date.now();
+
       const parsed = parseTelemetryFrame(frame);
       if (parsed) {
-        lastTelemetryAtRef.current = Date.now();
+        hasRxSinceConnectRef.current = true;
+        lastTelemetryAtRef.current = now;
         writeFailureStreakRef.current = 0;
         setRxFrameCount((previous) => previous + 1);
         setLastRxFrame(frame);
@@ -451,6 +470,19 @@ export function useRobotController() {
         }
         setBluetoothStatus("CONNECTED");
         continue;
+      }
+
+      const ack = parseCommandAckFrame(frame);
+      if (ack) {
+        hasRxSinceConnectRef.current = true;
+        lastTelemetryAtRef.current = now;
+        writeFailureStreakRef.current = 0;
+        setLastRxFrame(frame);
+        setBluetoothStatus("CONNECTED");
+
+        if (!ack.accepted) {
+          setBluetoothError(`Robot rejected command: ${ack.frame}`);
+        }
       }
     }
   }, []);
@@ -475,6 +507,7 @@ export function useRobotController() {
 
   const queueAllTuning = useCallback(
     (profile?: TuningProfile) => {
+      const sourceDrive = profile?.drive ?? driveRef.current;
       const sourceLimits = profile?.limits ?? limitsRef.current;
       const sourceAuto = profile?.autoValues ?? autoRef.current;
       const engine = engineRef.current;
@@ -482,6 +515,12 @@ export function useRobotController() {
       if (!engine || !canQueueCommand()) {
         return;
       }
+
+      engine.queueTuning("MAX", sourceDrive.max);
+      engine.queueTuning("ACC", sourceDrive.acc);
+      engine.queueTuning("DEAD", sourceDrive.dead);
+      engine.queueTuning("TURN", sourceDrive.turn);
+      engine.queueTuning("SERVOSTEP", sourceDrive.servoStep);
 
       engine.queueTuning("S1MIN", sourceLimits.s1Min);
       engine.queueTuning("S1MAX", sourceLimits.s1Max);
@@ -506,7 +545,10 @@ export function useRobotController() {
 
       linkDropGuardRef.current = false;
       writeFailureStreakRef.current = 0;
-      lastTelemetryAtRef.current = Date.now();
+      const now = Date.now();
+      connectedAtRef.current = now;
+      hasRxSinceConnectRef.current = false;
+      lastTelemetryAtRef.current = now;
 
       reconnectTargetRef.current = null;
       reconnectAttemptRef.current = 0;
@@ -535,11 +577,12 @@ export function useRobotController() {
         engine.queueServo(3, servoValuesRef.current.s3);
       }
 
-      queueAllTuning();
-      setTuningStatus("PROFILE SYNC QUEUED");
-
       if (source === "manual") {
+        queueAllTuning();
+        setTuningStatus("PROFILE SYNC QUEUED");
         setBluetoothModalOpen(false);
+      } else {
+        setTuningStatus("LINK RESTORED");
       }
     },
     [clearReconnectTimer, queueAllTuning],
@@ -817,6 +860,8 @@ export function useRobotController() {
       connectedAddressRef.current = null;
       writeFailureStreakRef.current = 0;
       lastTelemetryAtRef.current = 0;
+      connectedAtRef.current = 0;
+      hasRxSinceConnectRef.current = false;
       setConnectedAddress(null);
       setBluetoothStatus("DISCONNECTED");
       setBluetoothError(null);
@@ -947,24 +992,47 @@ export function useRobotController() {
     [canQueueCommand],
   );
 
-  const updateDrive = useCallback((patch: Partial<DriveTuning>) => {
-    setDrive((previous) => {
-      const next = sanitizeDrive({ ...previous, ...patch });
-      driveRef.current = next;
+  const updateDrive = useCallback(
+    (patch: Partial<DriveTuning>) => {
+      setDrive((previous) => {
+        const next = sanitizeDrive({ ...previous, ...patch });
+        driveRef.current = next;
 
-      if (
-        next.max !== previous.max ||
-        next.acc !== previous.acc ||
-        next.dead !== previous.dead ||
-        next.turn !== previous.turn ||
-        next.servoStep !== previous.servoStep
-      ) {
-        setTuningStatus("LIVE UNSAVED");
-      }
+        if (next.max !== previous.max) {
+          queueTuning("MAX", next.max);
+        }
 
-      return next;
-    });
-  }, []);
+        if (next.acc !== previous.acc) {
+          queueTuning("ACC", next.acc);
+        }
+
+        if (next.dead !== previous.dead) {
+          queueTuning("DEAD", next.dead);
+        }
+
+        if (next.turn !== previous.turn) {
+          queueTuning("TURN", next.turn);
+        }
+
+        if (next.servoStep !== previous.servoStep) {
+          queueTuning("SERVOSTEP", next.servoStep);
+        }
+
+        if (
+          next.max !== previous.max ||
+          next.acc !== previous.acc ||
+          next.dead !== previous.dead ||
+          next.turn !== previous.turn ||
+          next.servoStep !== previous.servoStep
+        ) {
+          setTuningStatus("LIVE UNSAVED");
+        }
+
+        return next;
+      });
+    },
+    [queueTuning],
+  );
 
   const updateLimits = useCallback(
     (patch: Partial<TuningLimits>) => {

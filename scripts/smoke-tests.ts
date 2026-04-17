@@ -14,8 +14,10 @@ import {
   buildServoFrame,
   buildStopFrame,
   buildTuningFrame,
+  parseCommandAckFrame,
   parseTelemetryFrame,
 } from "../src/protocol/frames";
+import { FrameStream } from "../src/protocol/frameStream";
 import {
   DEFAULT_FIRMWARE_TUNING,
   FIRMWARE_TUNING_KEYS,
@@ -44,6 +46,16 @@ async function testProtocolFrames(): Promise<void> {
   assert.equal(telemetry?.frontCm, 34);
   assert.equal(telemetry?.motorLeft, 120);
   assert.equal(telemetry?.motorRight, 118);
+
+  const ack = parseCommandAckFrame("ACK:KP=5;");
+  assert.ok(ack);
+  assert.equal(ack?.accepted, true);
+  assert.equal(ack?.frame, "KP=5;");
+
+  const nack = parseCommandAckFrame("NACK:TH=200;");
+  assert.ok(nack);
+  assert.equal(nack?.accepted, false);
+  assert.equal(nack?.frame, "TH=200;");
 }
 
 async function testJoystickMath(): Promise<void> {
@@ -118,6 +130,110 @@ async function testPriorityFairness(): Promise<void> {
   engine.stop();
 }
 
+async function testTuningThrottle(): Promise<void> {
+  const sent: Array<{ frame: string; at: number }> = [];
+
+  const engine = new PriorityCommandEngine(
+    async (frame) => {
+      sent.push({ frame, at: Date.now() });
+      return true;
+    },
+    {
+      periodMs: 10,
+    },
+  );
+
+  engine.start();
+  engine.queueTuning("KP", 10);
+  engine.queueTuning("KD", 8);
+  engine.queueTuning("TH", 20);
+
+  await wait(420);
+
+  const tuning = sent.filter(
+    (item) =>
+      item.frame.startsWith("KP=") ||
+      item.frame.startsWith("KD=") ||
+      item.frame.startsWith("TH="),
+  );
+
+  assert.equal(tuning.length, 3);
+  for (let index = 1; index < tuning.length; index += 1) {
+    const delta = tuning[index].at - tuning[index - 1].at;
+    assert.ok(delta >= 55);
+  }
+
+  engine.stop();
+}
+
+async function testTuningRetryAfterDrop(): Promise<void> {
+  const sent: string[] = [];
+  let attempts = 0;
+
+  const engine = new PriorityCommandEngine(
+    async (frame) => {
+      sent.push(frame);
+      attempts += 1;
+      return attempts > 1;
+    },
+    {
+      periodMs: 10,
+    },
+  );
+
+  engine.start();
+  engine.queueTuning("KP", 33);
+
+  await wait(260);
+
+  const kpFrames = sent.filter((frame) => frame.startsWith("KP="));
+  assert.ok(kpFrames.length >= 2);
+  assert.equal(engine.getQueueSize(), 0);
+
+  engine.stop();
+}
+
+async function testLatestTuningValueWins(): Promise<void> {
+  const sent: string[] = [];
+  let releaseFirstSend: () => void = () => {};
+  let firstCall = true;
+
+  const engine = new PriorityCommandEngine(
+    async (frame) => {
+      sent.push(frame);
+
+      if (firstCall) {
+        firstCall = false;
+        await new Promise<void>((resolve) => {
+          releaseFirstSend = resolve;
+        });
+      }
+
+      return true;
+    },
+    {
+      periodMs: 10,
+    },
+  );
+
+  engine.start();
+  engine.queueTuning("MD", 18);
+
+  await wait(25);
+  engine.queueTuning("MD", 20);
+
+  releaseFirstSend();
+  await wait(220);
+
+  const mdFrames = sent.filter((frame) => frame.startsWith("MD="));
+  assert.ok(mdFrames.length >= 2);
+  assert.equal(mdFrames[0], "MD=18;");
+  assert.equal(mdFrames[mdFrames.length - 1], "MD=20;");
+  assert.equal(engine.getQueueSize(), 0);
+
+  engine.stop();
+}
+
 async function testTuningCatalogIntegrity(): Promise<void> {
   assert.equal(FIRMWARE_TUNING_KEYS.length, FIRMWARE_TUNING_SPECS.length);
   assert.equal(new Set(FIRMWARE_TUNING_KEYS).size, FIRMWARE_TUNING_KEYS.length);
@@ -154,14 +270,36 @@ async function testReconnectPolicy(): Promise<void> {
   assert.equal(hasTelemetryTimedOut(1000, 2901, 1800), true);
 }
 
+async function testFrameStreamDelimiters(): Promise<void> {
+  const stream = new FrameStream();
+
+  const mixed = stream.pushChunk(
+    "ACK:MODE=AUTO;T=34,25,28,A,120,118\r\nNACK:BADFRAME\n",
+  );
+  assert.deepEqual(mixed, [
+    "ACK:MODE=AUTO",
+    "T=34,25,28,A,120,118",
+    "NACK:BADFRAME",
+  ]);
+
+  const split1 = stream.pushChunk("R:A,0,34,25");
+  assert.deepEqual(split1, []);
+  const split2 = stream.pushChunk(",28,120,118,90,95,90,0\n");
+  assert.deepEqual(split2, ["R:A,0,34,25,28,120,118,90,95,90,0"]);
+}
+
 async function run(): Promise<void> {
   const tests: Array<{ name: string; run: () => Promise<void> }> = [
     { name: "protocol frames", run: testProtocolFrames },
     { name: "joystick mapping", run: testJoystickMath },
     { name: "queue without ack", run: testQueueWithoutAck },
     { name: "priority fairness", run: testPriorityFairness },
+    { name: "tuning throttle", run: testTuningThrottle },
+    { name: "tuning retry after drop", run: testTuningRetryAfterDrop },
+    { name: "latest tuning value wins", run: testLatestTuningValueWins },
     { name: "tuning catalog integrity", run: testTuningCatalogIntegrity },
     { name: "reconnect policy", run: testReconnectPolicy },
+    { name: "frame stream delimiters", run: testFrameStreamDelimiters },
   ];
 
   for (const test of tests) {

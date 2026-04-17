@@ -24,6 +24,11 @@ interface RetroSliderProps {
   valuePlacement?: "below" | "header";
 }
 
+const TRACK_THICKNESS = 26;
+const THUMB_SIZE = 36;
+const THUMB_RADIUS = THUMB_SIZE / 2;
+const THUMB_CROSS_OFFSET = Math.round((TRACK_THICKNESS - THUMB_SIZE) / 2);
+
 function clamp(value: number, min: number, max: number): number {
   if (value < min) {
     return min;
@@ -82,7 +87,8 @@ export function RetroSlider({
       return;
     }
 
-    const ratioDelta = deltaPx / liveTrackLength;
+    const liveTravel = Math.max(1, liveTrackLength - THUMB_SIZE);
+    const ratioDelta = deltaPx / liveTravel;
     const spanValue = spanRef.current;
     const next = clamp(
       Math.round(dragStartValueRef.current + ratioDelta * spanValue),
@@ -138,8 +144,10 @@ export function RetroSlider({
     setTrackLength(safeLength);
   };
 
-  const ratio = valueToRatio(valueRef.current);
-  const thumbOffset = clamp(ratio * trackLength, 0, trackLength);
+  const ratio = valueToRatio(value);
+  const thumbTravel = Math.max(0, trackLength - THUMB_SIZE);
+  const thumbOffset = clamp(ratio * thumbTravel, 0, thumbTravel);
+  const fillOffset = clamp(thumbOffset + THUMB_RADIUS, 0, trackLength);
   const isFlat = variant === "flat";
   const showHeaderValue = valuePlacement === "header";
 
@@ -148,7 +156,7 @@ export function RetroSlider({
       {showHeaderValue ? (
         <View style={[styles.headerRow, isFlat && styles.headerRowFlat]}>
           <Text style={[styles.label, isFlat && styles.labelFlat, styles.labelHeader]}>{label}</Text>
-          <Text style={[styles.value, isFlat && styles.valueFlat, styles.valueHeader]}>{valueRef.current}</Text>
+          <Text style={[styles.value, isFlat && styles.valueFlat, styles.valueHeader]}>{value}</Text>
         </View>
       ) : (
         <Text style={[styles.label, isFlat && styles.labelFlat]}>{label}</Text>
@@ -167,13 +175,13 @@ export function RetroSlider({
             styles.fill,
             vertical
               ? {
-                height: thumbOffset,
+                height: fillOffset,
                 bottom: 0,
                 left: 0,
                 right: 0
               }
               : {
-                width: thumbOffset,
+                width: fillOffset,
                 top: 0,
                 bottom: 0,
                 left: 0
@@ -185,18 +193,18 @@ export function RetroSlider({
             styles.thumb,
             vertical
               ? {
-                bottom: thumbOffset - 16,
-                left: -9
+                bottom: thumbOffset - 2,
+                left: THUMB_CROSS_OFFSET - 2
               }
               : {
-                left: thumbOffset - 16,
-                top: -9
+                left: thumbOffset - 2,
+                top: THUMB_CROSS_OFFSET - 3
               }
           ]}
         />
       </View>
       {!showHeaderValue ? (
-        <Text style={[styles.value, isFlat && styles.valueFlat]}>{valueRef.current}</Text>
+        <Text style={[styles.value, isFlat && styles.valueFlat]}>{value}</Text>
       ) : null}
     </View>
   );
@@ -223,7 +231,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-start"
   },
   headerRow: {
-    width: "100%",
+    width: "96%",
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
@@ -271,25 +279,26 @@ const styles = StyleSheet.create({
     backgroundColor: "#131b21"
   },
   trackVertical: {
-    width: 26,
+    width: TRACK_THICKNESS,
     flex: 1,
     minHeight: 90
   },
   trackHorizontal: {
-    height: 26,
+    height: TRACK_THICKNESS,
     minWidth: 180,
-    width: "100%"
+    width: "97%"
   },
   fill: {
     position: "absolute",
     backgroundColor: palette.accent,
+    borderRadius: 8,
     opacity: 0.9
   },
   thumb: {
     position: "absolute",
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: THUMB_SIZE,
+    height: THUMB_SIZE,
+    borderRadius: THUMB_RADIUS,
     backgroundColor: palette.knob,
     borderWidth: 3,
     borderColor: palette.knobDark,
