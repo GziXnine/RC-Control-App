@@ -213,7 +213,7 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
     borderRadius: 0,
     paddingHorizontal: 0,
-    paddingVertical: 2
+    paddingVertical: 0
   },
   headerRow: {
     width: "100%",
@@ -222,7 +222,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between"
   },
   headerRowFlat: {
-    marginBottom: 2
+    marginBottom: 1
   },
   label: {
     color: palette.textSecondary,

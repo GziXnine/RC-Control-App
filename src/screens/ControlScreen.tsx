@@ -1,10 +1,11 @@
 import React from "react";
 import { SafeAreaView, StyleSheet, View } from "react-native";
 
+import { ArmController } from "../components/ArmController";
 import { BluetoothModal } from "../components/BluetoothModal";
+import { DirectionButtons } from "../components/DirectionButtons";
 import { JoystickPad } from "../components/JoystickPad";
 import { LcdPanel } from "../components/LcdPanel";
-import { RetroSlider } from "../components/RetroSlider";
 import { TopBar } from "../components/TopBar";
 import { TuningModal } from "../components/TuningModal";
 import { useRobotController } from "../hooks/useRobotController";
@@ -12,6 +13,10 @@ import { palette } from "../theme/palette";
 
 export function ControlScreen(): React.JSX.Element {
   const controller = useRobotController();
+  const armMinRaw = Math.max(controller.limits.s1Min, controller.limits.s2Min);
+  const armMaxRaw = Math.min(controller.limits.s1Max, controller.limits.s2Max);
+  const armMin = armMinRaw <= armMaxRaw ? armMinRaw : 0;
+  const armMax = armMinRaw <= armMaxRaw ? armMaxRaw : 180;
 
   return (
     <SafeAreaView style={styles.root}>
@@ -19,16 +24,26 @@ export function ControlScreen(): React.JSX.Element {
         <TopBar
           mode={controller.mode}
           stopLatched={controller.stopLatched}
+          gyroEnabled={controller.gyroEnabled}
           bluetoothLabel={controller.bluetoothLabel}
           onBluetoothPress={controller.openBluetooth}
           onTuningPress={controller.openTuning}
           onToggleMode={controller.toggleMode}
+          onToggleGyro={controller.toggleGyro}
           onStopPress={controller.sendStop}
         />
 
         <View style={styles.mainPanel}>
           <View style={styles.leftColumn}>
-            <JoystickPad onMove={controller.onJoystickMove} onRelease={controller.onJoystickRelease} />
+            {controller.gyroEnabled ? (
+              <DirectionButtons
+                onTurn={controller.sendTurn}
+                onMoveStart={controller.startDirectionalMove}
+                onMoveStop={controller.stopDirectionalMove}
+              />
+            ) : (
+              <JoystickPad onMove={controller.onJoystickMove} onRelease={controller.onJoystickRelease} />
+            )}
           </View>
 
           <View style={styles.centerColumn}>
@@ -43,40 +58,17 @@ export function ControlScreen(): React.JSX.Element {
           </View>
 
           <View style={styles.rightColumn}>
-            <View style={styles.servoRack}>
-              <RetroSlider
-                label="SERVO 1"
-                value={controller.servoValues.s1}
-                min={controller.limits.s1Min}
-                max={controller.limits.s1Max}
-                vertical
-                onChange={(value) => controller.setServo(1, value)}
-                variant="flat"
-                style={styles.servoSlider}
-              />
-
-              <RetroSlider
-                label="SERVO 2"
-                value={controller.servoValues.s2}
-                min={controller.limits.s2Min}
-                max={controller.limits.s2Max}
-                vertical
-                onChange={(value) => controller.setServo(2, value)}
-                variant="flat"
-                style={styles.servoSlider}
-              />
-
-              <RetroSlider
-                label="SERVO 3"
-                value={controller.servoValues.s3}
-                min={controller.limits.s3Min}
-                max={controller.limits.s3Max}
-                vertical
-                onChange={(value) => controller.setServo(3, value)}
-                variant="flat"
-                style={styles.servoSlider}
-              />
-            </View>
+            <ArmController
+              armValue={(controller.servoValues.s1 + controller.servoValues.s2) / 2}
+              armMin={armMin}
+              armMax={armMax}
+              servo3Value={controller.servoValues.s3}
+              gripMin={controller.limits.s3Min}
+              gripMax={controller.limits.s3Max}
+              onArmChange={controller.setArmPair}
+              onGrip={controller.setServo3Grip}
+              onOpen={controller.setServo3Open}
+            />
           </View>
         </View>
       </View>

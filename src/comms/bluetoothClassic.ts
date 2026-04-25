@@ -1,6 +1,6 @@
 /** @format */
 
-import { Platform } from "react-native";
+import { PermissionsAndroid, Platform, type Permission } from "react-native";
 import RNBluetoothClassic from "react-native-bluetooth-classic";
 
 export interface BluetoothDeviceInfo {
@@ -11,13 +11,61 @@ export interface BluetoothDeviceInfo {
 type DataListener = (chunk: string) => void;
 
 const bt: any = RNBluetoothClassic as any;
+const READ_POLL_MS = 30;
+
+function normalizeChunk(input: unknown): string {
+  return typeof input === "string" ? input : "";
+}
+
+async function requestAndroidBluetoothPermissions(): Promise<boolean> {
+  if (Platform.OS !== "android") {
+    return true;
+  }
+
+  if (typeof Platform.Version !== "number" || Platform.Version < 23) {
+    return true;
+  }
+
+  const permissionSet = new Set<Permission>();
+
+  const permissions = PermissionsAndroid.PERMISSIONS;
+  if (Platform.Version >= 31) {
+    if (permissions.BLUETOOTH_CONNECT) {
+      permissionSet.add(permissions.BLUETOOTH_CONNECT as Permission);
+    }
+
+    if (permissions.BLUETOOTH_SCAN) {
+      permissionSet.add(permissions.BLUETOOTH_SCAN as Permission);
+    }
+  }
+
+  if (permissions.ACCESS_FINE_LOCATION) {
+    permissionSet.add(permissions.ACCESS_FINE_LOCATION as Permission);
+  }
+
+  const permissionList = Array.from(permissionSet);
+  if (permissionList.length === 0) {
+    return true;
+  }
+
+  const results = await PermissionsAndroid.requestMultiple(permissionList);
+  return permissionList.every(
+    (permission) => results[permission] === PermissionsAndroid.RESULTS.GRANTED,
+  );
+}
 
 export class BluetoothClassicClient {
   private activeDevice: any = null;
   private readSubscription: { remove?: () => void } | null = null;
+  private readPollTimer: ReturnType<typeof setInterval> | null = null;
+  private readPollBusy = false;
 
   async ensureEnabled(): Promise<boolean> {
     try {
+      if (!(await requestAndroidBluetoothPermissions())) {
+        return false;
+      }
+
       const isEnabled = await bt.isBluetoothEnabled?.();
       if (isEnabled) {
         return true;
@@ -52,10 +100,18 @@ export class BluetoothClassicClient {
     await this.disconnect();
 
     try {
+      const connectOptions = {
+        delimiter: "\n",
+        charset: "ascii",
+      };
+
       let device = await bt.connectToDevice?.(address, {
-        delimiter: "",
-        deviceCharset: "ascii",
+        ...connectOptions,
       });
+
+      if (!device) {
+        device = await bt.connect?.(address, connectOptions);
+      }
 
       if (!device) {
         device = await bt.connect?.(address);
@@ -78,6 +134,7 @@ export class BluetoothClassicClient {
     try {
       this.readSubscription?.remove?.();
       this.readSubscription = null;
+      this.stopReadPolling();
 
       if (this.activeDevice?.disconnect) {
         await this.activeDevice.disconnect();
@@ -120,11 +177,12 @@ export class BluetoothClassicClient {
   private attachReader(onData: DataListener): void {
     this.readSubscription?.remove?.();
     this.readSubscription = null;
+    this.stopReadPolling();
 
     if (this.activeDevice?.onDataReceived) {
       this.readSubscription = this.activeDevice.onDataReceived((event: any) => {
-        const chunk = event?.data ?? event?.message ?? "";
-        if (typeof chunk === "string" && chunk.length > 0) {
+        const chunk = normalizeChunk(event?.data ?? event?.message);
+        if (chunk.length > 0) {
           onData(chunk);
         }
       });
@@ -135,8 +193,8 @@ export class BluetoothClassicClient {
       this.readSubscription = bt.onDeviceRead(
         this.activeDevice.address,
         (event: any) => {
-          const chunk = event?.data ?? event?.message ?? "";
-          if (typeof chunk === "string" && chunk.length > 0) {
+          const chunk = normalizeChunk(event?.data ?? event?.message);
+          if (chunk.length > 0) {
             onData(chunk);
           }
         },
@@ -147,11 +205,59 @@ export class BluetoothClassicClient {
     // Android only fallback for some plugin versions.
     if (Platform.OS === "android" && bt.onDataReceived) {
       this.readSubscription = bt.onDataReceived((event: any) => {
-        const chunk = event?.data ?? event?.message ?? "";
-        if (typeof chunk === "string" && chunk.length > 0) {
+        const chunk = normalizeChunk(event?.data ?? event?.message);
+        if (chunk.length > 0) {
           onData(chunk);
         }
       });
+      return;
     }
+
+    // Fallback for builds where event streams are unavailable.
+    this.startReadPolling(onData);
+  }
+
+  private stopReadPolling(): void {
+    if (this.readPollTimer !== null) {
+      clearInterval(this.readPollTimer);
+      this.readPollTimer = null;
+    }
+    this.readPollBusy = false;
+  }
+
+  private startReadPolling(onData: DataListener): void {
+    this.stopReadPolling();
+
+    this.readPollTimer = setInterval(() => {
+      if (!this.activeDevice || this.readPollBusy) {
+        return;
+      }
+
+      this.readPollBusy = true;
+      void (async () => {
+        try {
+          if (this.activeDevice?.read) {
+            const chunk = normalizeChunk(await this.activeDevice.read());
+            if (chunk.length > 0) {
+              onData(chunk);
+            }
+            return;
+          }
+
+          if (this.activeDevice?.address && bt.readFromDevice) {
+            const chunk = normalizeChunk(
+              await bt.readFromDevice(this.activeDevice.address),
+            );
+            if (chunk.length > 0) {
+              onData(chunk);
+            }
+          }
+        } catch {
+          // Ignore polling read errors; link-health logic handles disconnects.
+        } finally {
+          this.readPollBusy = false;
+        }
+      })();
+    }, READ_POLL_MS);
   }
 }

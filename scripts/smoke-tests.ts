@@ -9,11 +9,13 @@ import {
 } from "../src/comms/reconnectPolicy";
 import { joystickToDifferential, neutralMotor } from "../src/control/driveMath";
 import {
+  buildGyroAssistFrame,
   buildModeFrame,
   buildMotorFrame,
   buildServoFrame,
   buildStopFrame,
   buildTuningFrame,
+  buildTurnFrame,
   parseCommandAckFrame,
   parseTelemetryFrame,
 } from "../src/protocol/frames";
@@ -36,16 +38,25 @@ async function testProtocolFrames(): Promise<void> {
   assert.equal(buildStopFrame(), "STOP;");
   assert.equal(buildModeFrame("AUTO"), "A=1;");
   assert.equal(buildModeFrame("MANUAL"), "A=0;");
+  assert.equal(buildGyroAssistFrame(true), "G=1;");
+  assert.equal(buildGyroAssistFrame(false), "G=0;");
+  assert.equal(buildTurnFrame("RIGHT"), "TRN=1;");
+  assert.equal(buildTurnFrame("LEFT"), "TRN=-1;");
   assert.equal(buildMotorFrame({ left: 280, right: -340 }), "M=255,-255;");
   assert.equal(buildServoFrame(2, 188), "S2=180;");
   assert.equal(buildTuningFrame("th", 19.6), "TH=20;");
 
-  const telemetry = parseTelemetryFrame("T=34,25,28,A,120,118");
+  const telemetry = parseTelemetryFrame("T=34,25,28,-12");
   assert.ok(telemetry);
-  assert.equal(telemetry?.mode, "AUTO");
   assert.equal(telemetry?.frontCm, 34);
-  assert.equal(telemetry?.motorLeft, 120);
-  assert.equal(telemetry?.motorRight, 118);
+  assert.equal(telemetry?.leftCm, 25);
+  assert.equal(telemetry?.rightCm, 28);
+  assert.equal(telemetry?.yawDeg, -12);
+
+  const gyroTelemetry = parseTelemetryFrame("T=12,16,19,-27");
+  assert.ok(gyroTelemetry);
+  assert.equal(gyroTelemetry?.frontCm, 12);
+  assert.equal(gyroTelemetry?.yawDeg, -27);
 
   const ack = parseCommandAckFrame("ACK:KP=5;");
   assert.ok(ack);
@@ -217,18 +228,18 @@ async function testLatestTuningValueWins(): Promise<void> {
   );
 
   engine.start();
-  engine.queueTuning("MD", 18);
+  engine.queueTuning("CM", 18);
 
   await wait(25);
-  engine.queueTuning("MD", 20);
+  engine.queueTuning("CM", 20);
 
   releaseFirstSend();
   await wait(220);
 
-  const mdFrames = sent.filter((frame) => frame.startsWith("MD="));
-  assert.ok(mdFrames.length >= 2);
-  assert.equal(mdFrames[0], "MD=18;");
-  assert.equal(mdFrames[mdFrames.length - 1], "MD=20;");
+  const cmFrames = sent.filter((frame) => frame.startsWith("CM="));
+  assert.ok(cmFrames.length >= 2);
+  assert.equal(cmFrames[0], "CM=18;");
+  assert.equal(cmFrames[cmFrames.length - 1], "CM=20;");
   assert.equal(engine.getQueueSize(), 0);
 
   engine.stop();
@@ -242,15 +253,15 @@ async function testTuningCatalogIntegrity(): Promise<void> {
     KP: 500,
     KD: -20,
     TH: 3,
-    TS: 400,
-    BL: 0,
+    BR: 400,
+    CM: 0,
   });
 
   assert.equal(sanitized.KP, FIRMWARE_TUNING_LIMITS.KP.max);
   assert.equal(sanitized.KD, FIRMWARE_TUNING_LIMITS.KD.min);
   assert.equal(sanitized.TH, FIRMWARE_TUNING_LIMITS.TH.min);
-  assert.equal(sanitized.TS, FIRMWARE_TUNING_LIMITS.TS.max);
-  assert.equal(sanitized.BL, FIRMWARE_TUNING_LIMITS.BL.min);
+  assert.equal(sanitized.BR, FIRMWARE_TUNING_LIMITS.BR.max);
+  assert.equal(sanitized.CM, FIRMWARE_TUNING_LIMITS.CM.min);
 
   for (const key of FIRMWARE_TUNING_KEYS) {
     const value = DEFAULT_FIRMWARE_TUNING[key];
@@ -274,18 +285,14 @@ async function testFrameStreamDelimiters(): Promise<void> {
   const stream = new FrameStream();
 
   const mixed = stream.pushChunk(
-    "ACK:MODE=AUTO;T=34,25,28,A,120,118\r\nNACK:BADFRAME\n",
+    "ACK:MODE=AUTO;T=34,25,28,-12\r\nNACK:BADFRAME\n",
   );
-  assert.deepEqual(mixed, [
-    "ACK:MODE=AUTO",
-    "T=34,25,28,A,120,118",
-    "NACK:BADFRAME",
-  ]);
+  assert.deepEqual(mixed, ["ACK:MODE=AUTO", "T=34,25,28,-12", "NACK:BADFRAME"]);
 
-  const split1 = stream.pushChunk("R:A,0,34,25");
+  const split1 = stream.pushChunk("T=34,25");
   assert.deepEqual(split1, []);
-  const split2 = stream.pushChunk(",28,120,118,90,95,90,0\n");
-  assert.deepEqual(split2, ["R:A,0,34,25,28,120,118,90,95,90,0"]);
+  const split2 = stream.pushChunk(",28,-12\n");
+  assert.deepEqual(split2, ["T=34,25,28,-12"]);
 }
 
 async function run(): Promise<void> {

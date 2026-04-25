@@ -155,12 +155,13 @@ export function RetroSlider({
     <View style={[styles.wrapper, isFlat && styles.wrapperFlat, style]}>
       {showHeaderValue ? (
         <View style={[styles.headerRow, isFlat && styles.headerRowFlat]}>
-          <Text style={[styles.label, isFlat && styles.labelFlat, styles.labelHeader]}>{label}</Text>
-          <Text style={[styles.value, isFlat && styles.valueFlat, styles.valueHeader]}>{value}</Text>
+          <Text style={[styles.label, styles.labelHeader, isFlat && styles.labelFlat]}>{label}</Text>
+          <Text style={[styles.value, styles.valueHeader, isFlat && styles.valueFlat]}>{value}</Text>
         </View>
       ) : (
         <Text style={[styles.label, isFlat && styles.labelFlat]}>{label}</Text>
       )}
+
       <View
         style={[
           styles.track,
@@ -238,7 +239,7 @@ const styles = StyleSheet.create({
     marginBottom: 8
   },
   headerRowFlat: {
-    marginBottom: 6
+    marginBottom: 3
   },
   label: {
     fontFamily: "monospace",

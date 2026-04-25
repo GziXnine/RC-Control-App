@@ -7,20 +7,24 @@ import { RobotMode } from "../types/protocol";
 interface TopBarProps {
   mode: RobotMode;
   stopLatched: boolean;
+  gyroEnabled: boolean;
   bluetoothLabel: string;
   onBluetoothPress: () => void;
   onTuningPress: () => void;
   onToggleMode: () => void;
+  onToggleGyro: () => void;
   onStopPress: () => void;
 }
 
 export function TopBar({
   mode,
   stopLatched,
+  gyroEnabled,
   bluetoothLabel,
   onBluetoothPress,
   onTuningPress,
   onToggleMode,
+  onToggleGyro,
   onStopPress
 }: TopBarProps): React.JSX.Element {
   return (
@@ -31,6 +35,18 @@ export function TopBar({
 
       <Pressable style={styles.button} onPress={onTuningPress}>
         <Text style={styles.buttonText}>TUNING</Text>
+      </Pressable>
+
+      <Pressable
+        style={[
+          styles.button,
+          gyroEnabled && styles.gyroButtonActive
+        ]}
+        onPress={onToggleGyro}
+      >
+        <Text style={[styles.buttonText, gyroEnabled && styles.gyroTextActive]}>
+          GYRO
+        </Text>
       </Pressable>
 
       <Pressable
@@ -118,5 +134,12 @@ const styles = StyleSheet.create({
     fontFamily: "monospace",
     fontSize: 14,
     fontWeight: "700"
+  },
+  gyroButtonActive: {
+    borderColor: palette.greenLed,
+    backgroundColor: "#264532"
+  },
+  gyroTextActive: {
+    color: palette.greenLed
   }
 });

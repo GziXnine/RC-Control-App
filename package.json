@@ -5,7 +5,7 @@
   "main": "expo/AppEntry.js",
   "scripts": {
     "start": "expo start --dev-client",
-    "web": "expo start --web",
+    "web": "expo start --web --port 8082",
     "build": "npm run build:web",
     "build:web": "expo export --platform web",
     "preview:web": "npx serve dist",

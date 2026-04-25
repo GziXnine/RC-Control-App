@@ -25,6 +25,7 @@ interface PendingState {
   stop: boolean;
   modeQueue: RobotMode[];
   motor: MotorCommand | null;
+  motorStream: boolean;
   servo: Map<1 | 2 | 3, number>;
   tuning: Map<string, number>;
   tuningOrder: string[];
@@ -46,7 +47,7 @@ interface PendingFrame {
 
 const DEFAULT_PERIOD_MS = 25;
 const MOTOR_INTERVAL_MS = 50;
-const SERVO_INTERVAL_MS = 100;
+const SERVO_INTERVAL_MS = 60;
 const TUNING_MOTOR_GUARD_MS = 15;
 const TUNING_INTERVAL_MS = 80;
 const MAX_MODE_QUEUE = 3;
@@ -66,6 +67,7 @@ export class PriorityCommandEngine {
     stop: false,
     modeQueue: [],
     motor: null,
+    motorStream: false,
     servo: new Map(),
     tuning: new Map(),
     tuningOrder: [],
@@ -122,11 +124,12 @@ export class PriorityCommandEngine {
     }
   }
 
-  queueMotor(command: MotorCommand): void {
+  queueMotor(command: MotorCommand, options?: { stream?: boolean }): void {
     this.pending.motor = {
       left: Math.round(command.left),
       right: Math.round(command.right),
     };
+    this.pending.motorStream = options?.stream === true;
   }
 
   queueServo(id: 1 | 2 | 3, value: number): void {
@@ -150,6 +153,7 @@ export class PriorityCommandEngine {
     this.pending.stop = false;
     this.pending.modeQueue = [];
     this.pending.motor = null;
+    this.pending.motorStream = false;
     this.pending.servo.clear();
     this.pending.tuning.clear();
     this.pending.tuningOrder = [];
@@ -289,6 +293,7 @@ export class PriorityCommandEngine {
         onCommit: () => {
           this.lastCommitted.motor = motorFrame.frame;
           if (
+            !this.pending.motorStream &&
             this.pending.motor &&
             this.pending.motor.left === motorFrame.left &&
             this.pending.motor.right === motorFrame.right
@@ -334,7 +339,7 @@ export class PriorityCommandEngine {
     const command = this.pending.motor;
     const frame = buildMotorFrame(command);
 
-    if (frame === this.lastCommitted.motor) {
+    if (!this.pending.motorStream && frame === this.lastCommitted.motor) {
       if (
         this.pending.motor &&
         this.pending.motor.left === command.left &&

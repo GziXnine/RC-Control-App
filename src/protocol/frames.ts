@@ -33,6 +33,14 @@ export function buildModeFrame(mode: RobotMode): string {
   return mode === "AUTO" ? "A=1;" : "A=0;";
 }
 
+export function buildGyroAssistFrame(enabled: boolean): string {
+  return enabled ? "G=1;" : "G=0;";
+}
+
+export function buildTurnFrame(direction: "LEFT" | "RIGHT"): string {
+  return direction === "RIGHT" ? "TRN=1;" : "TRN=-1;";
+}
+
 export function buildMotorFrame(command: MotorCommand): string {
   const left = clampInt(Math.round(command.left), -255, 255);
   const right = clampInt(Math.round(command.right), -255, 255);
@@ -61,12 +69,47 @@ export function parseTelemetryFrame(frame: string): Telemetry | null {
     return Number.isFinite(value) ? value : 0;
   };
 
-  // Firmware-native telemetry: T=front,left,right,mode,currentL,currentR;
+  // Firmware telemetry supports multiple layouts:
+  // 1) Full:    T=front,left,right,mode,currentL,currentR;
+  // 2) Minimal: T=front,left,right;
+  // 3) Gyro:    T=front,left,right,yaw;
   if (normalized.startsWith("T=")) {
     const payload = normalized.slice(2);
     const fields = payload.split(",");
-    if (fields.length < 6) {
+
+    if (fields.length < 3) {
       return null;
+    }
+
+    if (fields.length === 4) {
+      return {
+        mode: "MANUAL",
+        // -1 marks telemetry frames that do not carry mode/motor fields.
+        stateCode: -1,
+        frontCm: toNumber(fields[0] ?? "0"),
+        leftCm: toNumber(fields[1] ?? "0"),
+        rightCm: toNumber(fields[2] ?? "0"),
+        servo1: 0,
+        servo2: 0,
+        servo3: 0,
+        yawDeg: toNumber(fields[3] ?? "0"),
+        stopLatched: false,
+      };
+    }
+
+    if (fields.length < 6) {
+      return {
+        mode: "MANUAL",
+        stateCode: -1,
+        frontCm: toNumber(fields[0] ?? "0"),
+        leftCm: toNumber(fields[1] ?? "0"),
+        rightCm: toNumber(fields[2] ?? "0"),
+        servo1: 0,
+        servo2: 0,
+        servo3: 0,
+        yawDeg: 0,
+        stopLatched: false,
+      };
     }
 
     const modeField = fields[3] ?? "M";
@@ -78,11 +121,10 @@ export function parseTelemetryFrame(frame: string): Telemetry | null {
       frontCm: toNumber(fields[0] ?? "0"),
       leftCm: toNumber(fields[1] ?? "0"),
       rightCm: toNumber(fields[2] ?? "0"),
-      motorLeft: toNumber(fields[4] ?? "0"),
-      motorRight: toNumber(fields[5] ?? "0"),
       servo1: 0,
       servo2: 0,
       servo3: 0,
+      yawDeg: 0,
       stopLatched: false,
     };
   }
@@ -106,11 +148,10 @@ export function parseTelemetryFrame(frame: string): Telemetry | null {
     frontCm: toNumber(fields[2] ?? "0"),
     leftCm: toNumber(fields[3] ?? "0"),
     rightCm: toNumber(fields[4] ?? "0"),
-    motorLeft: toNumber(fields[5] ?? "0"),
-    motorRight: toNumber(fields[6] ?? "0"),
     servo1: toNumber(fields[7] ?? "0"),
     servo2: toNumber(fields[8] ?? "0"),
     servo3: toNumber(fields[9] ?? "0"),
+    yawDeg: 0,
     stopLatched: toNumber(fields[10] ?? "0") === 1,
   };
 }

@@ -28,11 +28,10 @@ export interface Telemetry {
   frontCm: number;
   leftCm: number;
   rightCm: number;
-  motorLeft: number;
-  motorRight: number;
   servo1: number;
   servo2: number;
   servo3: number;
+  yawDeg: number;
   stopLatched: boolean;
 }
 

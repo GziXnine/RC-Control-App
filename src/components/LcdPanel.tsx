@@ -29,16 +29,16 @@ export function LcdPanel({
   rxFrameCount,
   connected
 }: LcdPanelProps): React.JSX.Element {
-  const speed = Math.round(
-    (Math.abs(telemetry.motorLeft) + Math.abs(telemetry.motorRight)) / 2,
-  );
-  const turnBias = telemetry.motorLeft - telemetry.motorRight;
   const nearestObstacle = [telemetry.frontCm, telemetry.leftCm, telemetry.rightCm]
     .filter((item) => item > 0)
     .reduce((min, value) => (value < min ? value : min), 999);
   const nearestLabel = nearestObstacle === 999 ? "NONE" : String(nearestObstacle);
-  const heading =
-    Math.abs(turnBias) <= 10 ? "STRAIGHT" : turnBias > 0 ? "RIGHT BIAS" : "LEFT BIAS";
+  const yawHeading =
+    Math.abs(telemetry.yawDeg) <= 3
+      ? "CENTER"
+      : telemetry.yawDeg > 0
+        ? "RIGHT"
+        : "LEFT";
   const obstacleState =
     nearestObstacle === 999
       ? "NO SENSOR DATA"
@@ -56,8 +56,8 @@ export function LcdPanel({
       </View>
 
       <View style={styles.row}>
-        <Text style={styles.key}>SPEED</Text>
-        <Text style={styles.value}>{speed}</Text>
+        <Text style={styles.key}>NEAR CM</Text>
+        <Text style={styles.value}>{`${nearestLabel} (${obstacleState})`}</Text>
       </View>
 
       <View style={styles.row}>
@@ -66,18 +66,8 @@ export function LcdPanel({
       </View>
 
       <View style={styles.row}>
-        <Text style={styles.key}>MOTOR</Text>
-        <Text style={styles.value}>{`${telemetry.motorLeft} | ${telemetry.motorRight}`}</Text>
-      </View>
-
-      <View style={styles.row}>
-        <Text style={styles.key}>TURN</Text>
-        <Text style={styles.value}>{`${turnBias} (${heading})`}</Text>
-      </View>
-
-      <View style={styles.row}>
-        <Text style={styles.key}>NEAR CM</Text>
-        <Text style={styles.value}>{`${nearestLabel} (${obstacleState})`}</Text>
+        <Text style={styles.key}>YAW</Text>
+        <Text style={styles.value}>{`${telemetry.yawDeg} (${yawHeading})`}</Text>
       </View>
 
       <View style={styles.row}>

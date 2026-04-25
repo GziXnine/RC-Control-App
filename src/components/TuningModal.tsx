@@ -436,5 +436,14 @@ const styles = StyleSheet.create({
   rangeItemFullWidth: {
     width: "100%",
     alignSelf: "stretch"
+  },
+  servoHint: {
+    color: palette.accent,
+    fontFamily: "monospace",
+    fontSize: 10,
+    fontWeight: "700",
+    textAlign: "center",
+    opacity: 0.75,
+    paddingTop: 4
   }
 });

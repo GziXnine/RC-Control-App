@@ -31,19 +31,19 @@ import {
 } from "../types/protocol";
 
 const DEFAULT_DRIVE: DriveTuning = {
-  max: 210,
+  max: 255,
   dead: 8,
-  acc: 8,
+  acc: 12,
   turn: 100,
-  servoStep: 2,
+  servoStep: 4,
 };
 
 const DEFAULT_LIMITS: TuningLimits = {
-  s1Min: 10,
-  s1Max: 170,
-  s2Min: 20,
+  s1Min: 20,
+  s1Max: 180,
+  s2Min: 0,
   s2Max: 165,
-  s3Min: 30,
+  s3Min: 15,
   s3Max: 90,
 };
 
@@ -53,11 +53,10 @@ const DEFAULT_TELEMETRY: Telemetry = {
   frontCm: 0,
   leftCm: 0,
   rightCm: 0,
-  motorLeft: 0,
-  motorRight: 0,
   servo1: 90,
   servo2: 95,
   servo3: 90,
+  yawDeg: 0,
   stopLatched: false,
 };
 
@@ -256,10 +255,17 @@ export function useRobotController() {
   const reconnectTargetRef = useRef<string | null>(null);
   const autoReconnectEnabledRef = useRef(true);
   const modeRef = useRef<RobotMode>("MANUAL");
+  const gyroEnabledRef = useRef(false);
   const servoValuesRef = useRef<ServoValues>({ s1: 90, s2: 95, s3: 90 });
+  const servo3RampTimerRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
+  const servo3RampStartRef = useRef(0);
+  const servo3RampTargetRef = useRef(90);
 
   const [mode, setMode] = useState<RobotMode>("MANUAL");
   const [stopLatched, setStopLatched] = useState(false);
+  const [gyroEnabled, setGyroEnabled] = useState(false);
   const [telemetry, setTelemetry] = useState<Telemetry>(DEFAULT_TELEMETRY);
   const [drive, setDrive] = useState<DriveTuning>(DEFAULT_DRIVE);
   const [limits, setLimits] = useState<TuningLimits>(DEFAULT_LIMITS);
@@ -298,6 +304,19 @@ export function useRobotController() {
   useEffect(() => {
     modeRef.current = mode;
   }, [mode]);
+
+  useEffect(() => {
+    gyroEnabledRef.current = gyroEnabled;
+  }, [gyroEnabled]);
+
+  // Cleanup timers on unmount.
+  useEffect(() => {
+    return () => {
+      if (servo3RampTimerRef.current !== null) {
+        clearInterval(servo3RampTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     servoValuesRef.current = servoValues;
@@ -434,7 +453,9 @@ export function useRobotController() {
       if (
         hasTelemetryTimedOut(lastTelemetry, Date.now(), TELEMETRY_TIMEOUT_MS)
       ) {
-        handleLinkLoss("Bluetooth link timeout. No recent telemetry or ACK frames.");
+        handleLinkLoss(
+          "Bluetooth link timeout. No recent telemetry or ACK frames.",
+        );
       }
     }, LINK_MONITOR_INTERVAL_MS);
 
@@ -451,6 +472,7 @@ export function useRobotController() {
 
       const parsed = parseTelemetryFrame(frame);
       if (parsed) {
+        const hasExplicitMode = parsed.stateCode >= 0;
         hasRxSinceConnectRef.current = true;
         lastTelemetryAtRef.current = now;
         writeFailureStreakRef.current = 0;
@@ -459,13 +481,18 @@ export function useRobotController() {
         setTelemetry((previous) => ({
           ...previous,
           ...parsed,
-          stopLatched: parsed.mode === "AUTO" ? false : previous.stopLatched,
+          stopLatched:
+            hasExplicitMode && parsed.mode === "AUTO"
+              ? false
+              : previous.stopLatched,
           servo1: servoValuesRef.current.s1,
           servo2: servoValuesRef.current.s2,
           servo3: servoValuesRef.current.s3,
         }));
-        setMode(parsed.mode);
-        if (parsed.mode === "AUTO") {
+        if (hasExplicitMode) {
+          setMode(parsed.mode);
+        }
+        if (hasExplicitMode && parsed.mode === "AUTO") {
           setStopLatched(false);
         }
         setBluetoothStatus("CONNECTED");
@@ -569,6 +596,7 @@ export function useRobotController() {
         const previousMode = modeRef.current;
         engine.queueMode("MANUAL");
         engine.queueMotor({ left: 0, right: 0 });
+        engine.queueTuning("G", gyroEnabledRef.current ? 1 : 0);
         if (previousMode === "AUTO") {
           engine.queueMode("AUTO");
         }
@@ -597,7 +625,9 @@ export function useRobotController() {
     const enabled = await bluetoothRef.current.ensureEnabled();
     if (!enabled) {
       setBluetoothStatus("ERROR");
-      setBluetoothError("Auto reconnect failed: Bluetooth is disabled.");
+      setBluetoothError(
+        "Auto reconnect failed: Bluetooth is disabled or permission was denied.",
+      );
       reconnectTargetRef.current = null;
       return;
     }
@@ -792,7 +822,7 @@ export function useRobotController() {
       if (!enabled) {
         setDevices([]);
         setBluetoothStatus("ERROR");
-        setBluetoothError("Bluetooth is disabled.");
+        setBluetoothError("Bluetooth is disabled or permission was denied.");
         return;
       }
 
@@ -821,7 +851,9 @@ export function useRobotController() {
         const enabled = await bluetoothRef.current.ensureEnabled();
         if (!enabled) {
           setBluetoothStatus("ERROR");
-          setBluetoothError("Please enable Bluetooth first.");
+          setBluetoothError(
+            "Please enable Bluetooth and grant permissions first.",
+          );
           return;
         }
 
@@ -882,10 +914,9 @@ export function useRobotController() {
     setTelemetry((previous) => ({
       ...previous,
       mode: "MANUAL",
-      motorLeft: 0,
-      motorRight: 0,
       stopLatched: true,
     }));
+    engineRef.current?.queueMotor({ left: 0, right: 0 }, { stream: false });
     engineRef.current?.queueStop();
   }, [canQueueCommand]);
 
@@ -911,13 +942,79 @@ export function useRobotController() {
 
     if (nextMode === "AUTO") {
       // Explicitly clear STOP latch before enabling AUTO.
+      setGyroEnabled(false);
+      engine.queueTuning("G", 0);
       engine.queueMode("MANUAL");
       engine.queueMode("AUTO");
     } else {
       engine.queueMode("MANUAL");
     }
 
-    engine.queueMotor({ left: 0, right: 0 });
+    engine.queueMotor({ left: 0, right: 0 }, { stream: false });
+  }, [canQueueCommand, mode]);
+
+  const toggleGyro = useCallback(() => {
+    if (mode !== "MANUAL") {
+      return; // GYRO only works in MANUAL mode
+    }
+
+    setGyroEnabled((previous) => {
+      const next = !previous;
+      if (canQueueCommand()) {
+        engineRef.current?.queueTuning("G", next ? 1 : 0);
+      }
+      return next;
+    });
+  }, [canQueueCommand, mode]);
+
+  const sendTurn = useCallback(
+    (direction: "LEFT" | "RIGHT") => {
+      if (
+        mode !== "MANUAL" ||
+        stopLatched ||
+        !gyroEnabled ||
+        !canQueueCommand()
+      ) {
+        return;
+      }
+
+      motorRef.current = neutralMotor();
+      engineRef.current?.queueMotor(motorRef.current, { stream: false });
+      engineRef.current?.queueTuning("TRN", direction === "RIGHT" ? 1 : -1);
+    },
+    [mode, stopLatched, gyroEnabled, canQueueCommand],
+  );
+
+  const startDirectionalMove = useCallback(
+    (direction: "UP" | "DOWN") => {
+      if (
+        mode !== "MANUAL" ||
+        stopLatched ||
+        !gyroEnabled ||
+        !canQueueCommand()
+      ) {
+        return;
+      }
+
+      const speed = driveRef.current.max;
+      const next =
+        direction === "UP"
+          ? { left: speed, right: speed }
+          : { left: -speed, right: -speed };
+      motorRef.current = next;
+      engineRef.current?.queueMotor(next, { stream: true });
+    },
+    [canQueueCommand, gyroEnabled, mode, stopLatched],
+  );
+
+  const stopDirectionalMove = useCallback(() => {
+    if (mode !== "MANUAL" || !canQueueCommand()) {
+      return;
+    }
+
+    const neutral = neutralMotor();
+    motorRef.current = neutral;
+    engineRef.current?.queueMotor(neutral, { stream: false });
   }, [canQueueCommand, mode]);
 
   const onJoystickMove = useCallback(
@@ -933,7 +1030,7 @@ export function useRobotController() {
         motorRef.current,
       );
       motorRef.current = next;
-      engineRef.current?.queueMotor(next);
+      engineRef.current?.queueMotor(next, { stream: true });
     },
     [canQueueCommand, mode, stopLatched],
   );
@@ -945,7 +1042,7 @@ export function useRobotController() {
 
     const neutral = neutralMotor();
     motorRef.current = neutral;
-    engineRef.current?.queueMotor(neutral);
+    engineRef.current?.queueMotor(neutral, { stream: false });
   }, [canQueueCommand, mode]);
 
   const setServo = useCallback(
@@ -991,6 +1088,81 @@ export function useRobotController() {
     },
     [canQueueCommand],
   );
+
+  const setArmPair = useCallback(
+    (value: number) => {
+      const rounded = Math.round(value);
+      const nextS1 = clampInt(
+        rounded,
+        limitsRef.current.s1Min,
+        limitsRef.current.s1Max,
+      );
+      const nextS2 = clampInt(
+        rounded,
+        limitsRef.current.s2Min,
+        limitsRef.current.s2Max,
+      );
+
+      setServoValues((previous) => ({
+        ...previous,
+        s1: nextS1,
+        s2: nextS2,
+      }));
+
+      setTelemetry((previous) => ({
+        ...previous,
+        servo1: nextS1,
+        servo2: nextS2,
+      }));
+
+      if (canQueueCommand()) {
+        engineRef.current?.queueServo(1, nextS1);
+        engineRef.current?.queueServo(2, nextS2);
+      }
+    },
+    [canQueueCommand],
+  );
+
+  const rampServo3To = useCallback(
+    (targetAngle: number) => {
+      if (servo3RampTimerRef.current !== null) {
+        clearInterval(servo3RampTimerRef.current);
+        servo3RampTimerRef.current = null;
+      }
+
+      servo3RampStartRef.current = Date.now();
+      servo3RampTargetRef.current = clampInt(
+        targetAngle,
+        limitsRef.current.s3Min,
+        limitsRef.current.s3Max,
+      );
+      const rampDurationMs = 300;
+
+      servo3RampTimerRef.current = setInterval(() => {
+        const elapsed = Date.now() - servo3RampStartRef.current;
+        const progress = Math.min(elapsed / rampDurationMs, 1);
+        const current = servoValuesRef.current.s3;
+        const target = servo3RampTargetRef.current;
+        const next = Math.round(current + (target - current) * progress);
+
+        setServo(3, next);
+
+        if (progress >= 1) {
+          clearInterval(servo3RampTimerRef.current!);
+          servo3RampTimerRef.current = null;
+        }
+      }, 16);
+    },
+    [setServo],
+  );
+
+  const setServo3Grip = useCallback(() => {
+    rampServo3To(limitsRef.current.s3Min);
+  }, [rampServo3To]);
+
+  const setServo3Open = useCallback(() => {
+    rampServo3To(limitsRef.current.s3Max);
+  }, [rampServo3To]);
 
   const updateDrive = useCallback(
     (patch: Partial<DriveTuning>) => {
@@ -1122,6 +1294,7 @@ export function useRobotController() {
   return {
     mode,
     stopLatched,
+    gyroEnabled,
     telemetry,
     drive,
     limits,
@@ -1150,9 +1323,16 @@ export function useRobotController() {
     disconnectDevice,
     sendStop,
     toggleMode,
+    toggleGyro,
+    sendTurn,
+    startDirectionalMove,
+    stopDirectionalMove,
     onJoystickMove,
     onJoystickRelease,
     setServo,
+    setArmPair,
+    setServo3Grip,
+    setServo3Open,
     updateDrive,
     updateLimits,
     updateAuto,

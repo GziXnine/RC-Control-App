@@ -115,9 +115,10 @@ export class BluetoothClassicClient {
       }
 
       this.tickSimulation();
-      const frame =
-        `T=${this.sim.frontCm},${this.sim.leftCm},${this.sim.rightCm},` +
-        `${this.sim.mode},${this.sim.motorLeft},${this.sim.motorRight};`;
+      const yawDeg = Math.round(
+        (this.sim.motorRight - this.sim.motorLeft) / 20,
+      );
+      const frame = `T=${this.sim.frontCm},${this.sim.leftCm},${this.sim.rightCm},${yawDeg};`;
       this.onData(frame);
     }, 200);
   }
