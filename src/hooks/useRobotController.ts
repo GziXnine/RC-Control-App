@@ -57,6 +57,9 @@ const DEFAULT_TELEMETRY: Telemetry = {
   servo2: 95,
   servo3: 90,
   yawDeg: 0,
+  ledRx: false,
+  ledMode: false,
+  diagCode: 0,
   stopLatched: false,
 };
 
@@ -255,7 +258,6 @@ export function useRobotController() {
   const reconnectTargetRef = useRef<string | null>(null);
   const autoReconnectEnabledRef = useRef(true);
   const modeRef = useRef<RobotMode>("MANUAL");
-  const gyroEnabledRef = useRef(false);
   const servoValuesRef = useRef<ServoValues>({ s1: 90, s2: 95, s3: 90 });
   const servo3RampTimerRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
@@ -304,10 +306,6 @@ export function useRobotController() {
   useEffect(() => {
     modeRef.current = mode;
   }, [mode]);
-
-  useEffect(() => {
-    gyroEnabledRef.current = gyroEnabled;
-  }, [gyroEnabled]);
 
   // Cleanup timers on unmount.
   useEffect(() => {
@@ -485,10 +483,17 @@ export function useRobotController() {
             hasExplicitMode && parsed.mode === "AUTO"
               ? false
               : previous.stopLatched,
-          servo1: servoValuesRef.current.s1,
-          servo2: servoValuesRef.current.s2,
-          servo3: servoValuesRef.current.s3,
         }));
+        setServoValues((previous) =>
+          clampServosToLimits(
+            {
+              s1: parsed.servo1 > 0 ? parsed.servo1 : previous.s1,
+              s2: parsed.servo2 > 0 ? parsed.servo2 : previous.s2,
+              s3: parsed.servo3 > 0 ? parsed.servo3 : previous.s3,
+            },
+            limitsRef.current,
+          ),
+        );
         if (hasExplicitMode) {
           setMode(parsed.mode);
         }
@@ -534,7 +539,6 @@ export function useRobotController() {
 
   const queueAllTuning = useCallback(
     (profile?: TuningProfile) => {
-      const sourceDrive = profile?.drive ?? driveRef.current;
       const sourceLimits = profile?.limits ?? limitsRef.current;
       const sourceAuto = profile?.autoValues ?? autoRef.current;
       const engine = engineRef.current;
@@ -542,12 +546,6 @@ export function useRobotController() {
       if (!engine || !canQueueCommand()) {
         return;
       }
-
-      engine.queueTuning("MAX", sourceDrive.max);
-      engine.queueTuning("ACC", sourceDrive.acc);
-      engine.queueTuning("DEAD", sourceDrive.dead);
-      engine.queueTuning("TURN", sourceDrive.turn);
-      engine.queueTuning("SERVOSTEP", sourceDrive.servoStep);
 
       engine.queueTuning("S1MIN", sourceLimits.s1Min);
       engine.queueTuning("S1MAX", sourceLimits.s1Max);
@@ -596,7 +594,6 @@ export function useRobotController() {
         const previousMode = modeRef.current;
         engine.queueMode("MANUAL");
         engine.queueMotor({ left: 0, right: 0 });
-        engine.queueTuning("G", gyroEnabledRef.current ? 1 : 0);
         if (previousMode === "AUTO") {
           engine.queueMode("AUTO");
         }
@@ -768,6 +765,7 @@ export function useRobotController() {
 
       if (connectedAddress) {
         queueAllTuning(profile);
+        queueTuning("SAVE", 1);
         setTuningStatus("PROFILE SAVED + SYNC QUEUED");
       } else {
         setTuningStatus("PROFILE SAVED");
@@ -784,6 +782,9 @@ export function useRobotController() {
     try {
       const defaults = createDefaultProfile();
       applyProfile(defaults, connectedAddress !== null);
+      if (connectedAddress) {
+        queueTuning("DFLT", 1);
+      }
       await AsyncStorage.setItem(TUNING_STORAGE_KEY, JSON.stringify(defaults));
       setTuningStatus(
         connectedAddress
@@ -943,7 +944,6 @@ export function useRobotController() {
     if (nextMode === "AUTO") {
       // Explicitly clear STOP latch before enabling AUTO.
       setGyroEnabled(false);
-      engine.queueTuning("G", 0);
       engine.queueMode("MANUAL");
       engine.queueMode("AUTO");
     } else {
@@ -955,17 +955,11 @@ export function useRobotController() {
 
   const toggleGyro = useCallback(() => {
     if (mode !== "MANUAL") {
-      return; // GYRO only works in MANUAL mode
+      return;
     }
 
-    setGyroEnabled((previous) => {
-      const next = !previous;
-      if (canQueueCommand()) {
-        engineRef.current?.queueTuning("G", next ? 1 : 0);
-      }
-      return next;
-    });
-  }, [canQueueCommand, mode]);
+    setGyroEnabled((previous) => !previous);
+  }, [mode]);
 
   const sendTurn = useCallback(
     (direction: "LEFT" | "RIGHT") => {
@@ -980,31 +974,38 @@ export function useRobotController() {
 
       motorRef.current = neutralMotor();
       engineRef.current?.queueMotor(motorRef.current, { stream: false });
-      engineRef.current?.queueTuning("TRN", direction === "RIGHT" ? 1 : -1);
+      const pwm = driveRef.current.turn;
+      const next =
+        direction === "RIGHT"
+          ? { left: pwm, right: -pwm }
+          : { left: -pwm, right: pwm };
+      engineRef.current?.queueMotor(next, { stream: true });
     },
     [mode, stopLatched, gyroEnabled, canQueueCommand],
   );
 
   const startDirectionalMove = useCallback(
-    (direction: "UP" | "DOWN") => {
-      if (
-        mode !== "MANUAL" ||
-        stopLatched ||
-        !gyroEnabled ||
-        !canQueueCommand()
-      ) {
+    (direction: "UP" | "DOWN" | "LEFT" | "RIGHT") => {
+      if (mode !== "MANUAL" || stopLatched || !canQueueCommand()) {
         return;
       }
 
       const speed = driveRef.current.max;
-      const next =
-        direction === "UP"
-          ? { left: speed, right: speed }
-          : { left: -speed, right: -speed };
+      let next = { left: 0, right: 0 };
+      if (direction === "UP") {
+        next = { left: speed, right: speed };
+      } else if (direction === "DOWN") {
+        next = { left: -speed, right: -speed };
+      } else if (direction === "LEFT") {
+        next = { left: -speed, right: speed };
+      } else {
+        next = { left: speed, right: -speed };
+      }
+
       motorRef.current = next;
       engineRef.current?.queueMotor(next, { stream: true });
     },
-    [canQueueCommand, gyroEnabled, mode, stopLatched],
+    [canQueueCommand, mode, stopLatched],
   );
 
   const stopDirectionalMove = useCallback(() => {
@@ -1170,26 +1171,6 @@ export function useRobotController() {
         const next = sanitizeDrive({ ...previous, ...patch });
         driveRef.current = next;
 
-        if (next.max !== previous.max) {
-          queueTuning("MAX", next.max);
-        }
-
-        if (next.acc !== previous.acc) {
-          queueTuning("ACC", next.acc);
-        }
-
-        if (next.dead !== previous.dead) {
-          queueTuning("DEAD", next.dead);
-        }
-
-        if (next.turn !== previous.turn) {
-          queueTuning("TURN", next.turn);
-        }
-
-        if (next.servoStep !== previous.servoStep) {
-          queueTuning("SERVOSTEP", next.servoStep);
-        }
-
         if (
           next.max !== previous.max ||
           next.acc !== previous.acc ||
@@ -1203,7 +1184,7 @@ export function useRobotController() {
         return next;
       });
     },
-    [queueTuning],
+    [],
   );
 
   const updateLimits = useCallback(

@@ -1,17 +1,20 @@
 /** @format */
 
 export type FirmwareTuningKey =
+  | "AFL"
+  | "AFR"
+  | "TPL"
+  | "TPR"
   | "KP"
-  | "KD"
-  | "SP"
+  | "DB"
+  | "TOL"
+  | "TTO"
+  | "F45"
+  | "CALN"
   | "TH"
-  | "PV"
-  | "GA"
-  | "RA"
-  | "RV"
-  | "DZ"
-  | "BR"
-  | "CM";
+  | "MG"
+  | "MLT"
+  | "MRT";
 
 export type AppTuningKey = "S3_GRIP" | "S3_OPEN";
 export type AnyTuningKey = FirmwareTuningKey | AppTuningKey;
@@ -29,91 +32,115 @@ export interface FirmwareTuningSpec {
 
 export const FIRMWARE_TUNING_SPECS: ReadonlyArray<FirmwareTuningSpec> = [
   {
-    key: "KP",
-    label: "STEER KP",
-    min: 0,
-    max: 80,
-    defaultValue: 5,
+    key: "AFL",
+    label: "AUTO FWD LEFT",
+    min: 70,
+    max: 230,
+    defaultValue: 145,
     section: "CORE",
   },
   {
-    key: "KD",
-    label: "STEER KD",
-    min: 0,
-    max: 80,
-    defaultValue: 2,
+    key: "AFR",
+    label: "AUTO FWD RIGHT",
+    min: 70,
+    max: 230,
+    defaultValue: 145,
     section: "CORE",
   },
   {
-    key: "SP",
-    label: "BASE SPEED",
-    min: 60,
-    max: 255,
+    key: "TPL",
+    label: "TURN PWM LEFT",
+    min: 70,
+    max: 230,
     defaultValue: 150,
     section: "CORE",
   },
   {
-    key: "TH",
-    label: "FRONT BLOCK",
-    min: 6,
-    max: 120,
-    defaultValue: 16,
-    section: "CORE",
-  },
-  {
-    key: "PV",
-    label: "PIVOT PWM",
+    key: "TPR",
+    label: "TURN PWM RIGHT",
     min: 70,
-    max: 255,
-    defaultValue: 130,
+    max: 230,
+    defaultValue: 150,
     section: "CORE",
   },
   {
-    key: "GA",
-    label: "GYRO ANGLE",
-    min: 45,
-    max: 135,
-    defaultValue: 90,
+    key: "KP",
+    label: "TURN KP",
+    min: 0,
+    max: 20,
+    defaultValue: 4,
     section: "CORE",
   },
   {
-    key: "RA",
-    label: "RAMP STEP",
-    min: 1,
-    max: 40,
-    defaultValue: 8,
-    section: "ADVANCED",
-  },
-  {
-    key: "RV",
-    label: "REVERSE STEP",
-    min: 1,
-    max: 80,
-    defaultValue: 22,
-    section: "ADVANCED",
-  },
-  {
-    key: "DZ",
-    label: "DEADZONE",
+    key: "DB",
+    label: "GYRO DEADBAND",
     min: 0,
-    max: 40,
+    max: 10,
+    defaultValue: 2,
+    section: "CORE",
+  },
+  {
+    key: "TOL",
+    label: "TURN TOLERANCE",
+    min: 2,
+    max: 15,
+    defaultValue: 5,
+    section: "CORE",
+  },
+  {
+    key: "TH",
+    label: "FRONT STOP CM",
+    min: 4,
+    max: 30,
     defaultValue: 8,
-    section: "ADVANCED",
+    section: "CORE",
   },
   {
-    key: "BR",
-    label: "BREAKAWAY",
+    key: "MG",
+    label: "SIDE MARGIN",
     min: 0,
-    max: 180,
-    defaultValue: 75,
+    max: 10,
+    defaultValue: 2,
+    section: "CORE",
+  },
+  {
+    key: "MLT",
+    label: "MANUAL TRIM L",
+    min: -60,
+    max: 60,
+    defaultValue: 0,
+    section: "CORE",
+  },
+  {
+    key: "MRT",
+    label: "MANUAL TRIM R",
+    min: -60,
+    max: 60,
+    defaultValue: 0,
     section: "ADVANCED",
   },
   {
-    key: "CM",
-    label: "CORR CLAMP",
-    min: 20,
-    max: 180,
-    defaultValue: 110,
+    key: "TTO",
+    label: "TURN TIMEOUT",
+    min: 500,
+    max: 2500,
+    defaultValue: 1200,
+    section: "ADVANCED",
+  },
+  {
+    key: "F45",
+    label: "FALLBACK 45 MS",
+    min: 180,
+    max: 900,
+    defaultValue: 320,
+    section: "ADVANCED",
+  },
+  {
+    key: "CALN",
+    label: "CALIB EVERY N",
+    min: 1,
+    max: 3,
+    defaultValue: 2,
     section: "ADVANCED",
   },
 ];

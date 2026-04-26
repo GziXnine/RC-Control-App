@@ -45,7 +45,7 @@ export function TopBar({
         onPress={onToggleGyro}
       >
         <Text style={[styles.buttonText, gyroEnabled && styles.gyroTextActive]}>
-          GYRO
+          BUTTONS
         </Text>
       </Pressable>
 

@@ -32,6 +32,9 @@ export interface Telemetry {
   servo2: number;
   servo3: number;
   yawDeg: number;
+  ledRx: boolean;
+  ledMode: boolean;
+  diagCode: number;
   stopLatched: boolean;
 }
 

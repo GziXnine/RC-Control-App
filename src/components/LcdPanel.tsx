@@ -41,7 +41,7 @@ export function LcdPanel({
         : "LEFT";
   const obstacleState =
     nearestObstacle === 999
-      ? "NO SENSOR DATA"
+      ? "NO DATA"
       : nearestObstacle <= 20
         ? "CAUTION"
         : "CLEAR";

@@ -13,10 +13,6 @@ import { palette } from "../theme/palette";
 
 export function ControlScreen(): React.JSX.Element {
   const controller = useRobotController();
-  const armMinRaw = Math.max(controller.limits.s1Min, controller.limits.s2Min);
-  const armMaxRaw = Math.min(controller.limits.s1Max, controller.limits.s2Max);
-  const armMin = armMinRaw <= armMaxRaw ? armMinRaw : 0;
-  const armMax = armMinRaw <= armMaxRaw ? armMaxRaw : 180;
 
   return (
     <SafeAreaView style={styles.root}>
@@ -37,7 +33,6 @@ export function ControlScreen(): React.JSX.Element {
           <View style={styles.leftColumn}>
             {controller.gyroEnabled ? (
               <DirectionButtons
-                onTurn={controller.sendTurn}
                 onMoveStart={controller.startDirectionalMove}
                 onMoveStop={controller.stopDirectionalMove}
               />
@@ -59,13 +54,17 @@ export function ControlScreen(): React.JSX.Element {
 
           <View style={styles.rightColumn}>
             <ArmController
-              armValue={(controller.servoValues.s1 + controller.servoValues.s2) / 2}
-              armMin={armMin}
-              armMax={armMax}
-              servo3Value={controller.servoValues.s3}
+              baseValue={controller.servoValues.s1}
+              upperValue={controller.servoValues.s2}
+              gripValue={controller.servoValues.s3}
+              baseMin={controller.limits.s1Min}
+              baseMax={controller.limits.s1Max}
+              upperMin={controller.limits.s2Min}
+              upperMax={controller.limits.s2Max}
               gripMin={controller.limits.s3Min}
               gripMax={controller.limits.s3Max}
-              onArmChange={controller.setArmPair}
+              onBaseChange={(value) => controller.setServo(1, value)}
+              onUpperChange={(value) => controller.setServo(2, value)}
               onGrip={controller.setServo3Grip}
               onOpen={controller.setServo3Open}
             />

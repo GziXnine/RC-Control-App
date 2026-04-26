@@ -18,6 +18,9 @@ interface SimState {
   frontCm: number;
   leftCm: number;
   rightCm: number;
+  ledRx: boolean;
+  ledMode: boolean;
+  diagCode: number;
 }
 
 function clampInt(value: number, min: number, max: number): number {
@@ -57,6 +60,9 @@ export class BluetoothClassicClient {
     frontCm: 120,
     leftCm: 85,
     rightCm: 85,
+    ledRx: false,
+    ledMode: false,
+    diagCode: 0,
   };
 
   async ensureEnabled(): Promise<boolean> {
@@ -118,8 +124,11 @@ export class BluetoothClassicClient {
       const yawDeg = Math.round(
         (this.sim.motorRight - this.sim.motorLeft) / 20,
       );
-      const frame = `T=${this.sim.frontCm},${this.sim.leftCm},${this.sim.rightCm},${yawDeg};`;
+      this.sim.ledMode = this.sim.mode === "A" && this.sim.diagCode === 0;
+      const mode = this.sim.mode === "A" ? 1 : 0;
+      const frame = `T=${mode},${this.sim.frontCm},${this.sim.leftCm},${this.sim.rightCm},${yawDeg},${this.sim.motorLeft},${this.sim.motorRight},${this.sim.servo1},${this.sim.servo2},${this.sim.servo3},${this.sim.ledRx ? 1 : 0},${this.sim.ledMode ? 1 : 0},${this.sim.diagCode};`;
       this.onData(frame);
+      this.sim.ledRx = false;
     }, 200);
   }
 
@@ -158,6 +167,7 @@ export class BluetoothClassicClient {
       this.sim.mode = "M";
       this.sim.motorLeft = 0;
       this.sim.motorRight = 0;
+      this.sim.ledRx = true;
       return;
     }
 
@@ -166,6 +176,7 @@ export class BluetoothClassicClient {
       this.sim.mode = "M";
       this.sim.motorLeft = 0;
       this.sim.motorRight = 0;
+      this.sim.ledRx = true;
       return;
     }
 
@@ -173,6 +184,7 @@ export class BluetoothClassicClient {
       if (!this.sim.stopLatched) {
         this.sim.mode = "A";
       }
+      this.sim.ledRx = true;
       return;
     }
 
@@ -191,29 +203,37 @@ export class BluetoothClassicClient {
       this.sim.mode = "M";
       this.sim.motorLeft = clampInt(left, -255, 255);
       this.sim.motorRight = clampInt(right, -255, 255);
+      this.sim.ledRx = true;
       return;
     }
 
-    const servoMatch = normalized.match(/^S([123])=(\d+);$/);
+    const servoMatch = normalized.match(/^(SB|SU|SG)=(\d+);$/);
     if (servoMatch) {
       if (this.sim.stopLatched) {
         return;
       }
 
-      const id = parseIntSafe(servoMatch[1] ?? "");
       const value = parseIntSafe(servoMatch[2] ?? "");
-      if (id === null || value === null) {
+      if (value === null) {
         return;
       }
 
       const safe = clampInt(value, 0, 180);
-      if (id === 1) {
+      if (servoMatch[1] === "SB") {
         this.sim.servo1 = safe;
-      } else if (id === 2) {
+      } else if (servoMatch[1] === "SU") {
         this.sim.servo2 = safe;
       } else {
         this.sim.servo3 = safe;
       }
+
+      this.sim.ledRx = true;
+      return;
+    }
+
+    const tuningMatch = normalized.match(/^[A-Z0-9_]+=\s*(-?\d+)\s*;$/);
+    if (tuningMatch) {
+      this.sim.ledRx = true;
     }
   }
 }

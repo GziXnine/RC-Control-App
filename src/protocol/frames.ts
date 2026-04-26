@@ -49,11 +49,28 @@ export function buildMotorFrame(command: MotorCommand): string {
 
 export function buildServoFrame(id: 1 | 2 | 3, angle: number): string {
   const safe = clampInt(Math.round(angle), 0, 180);
-  return `S${id}=${safe};`;
+  if (id === 1) {
+    return `SB=${safe};`;
+  }
+
+  if (id === 2) {
+    return `SU=${safe};`;
+  }
+
+  return `SG=${safe};`;
 }
 
 export function buildTuningFrame(key: string, value: number): string {
   const normalizedKey = sanitizeAsciiUpper(key).replace(/[^A-Z0-9_]/g, "");
+  if (
+    normalizedKey === "SAVE" ||
+    normalizedKey === "LOAD" ||
+    normalizedKey === "DFLT" ||
+    normalizedKey === "CLR"
+  ) {
+    return `${normalizedKey};`;
+  }
+
   const safeValue = Math.round(value);
   if (normalizedKey.length === 0) {
     return "";
@@ -69,22 +86,40 @@ export function parseTelemetryFrame(frame: string): Telemetry | null {
     return Number.isFinite(value) ? value : 0;
   };
 
-  // Firmware telemetry supports multiple layouts:
-  // 1) Full:    T=front,left,right,mode,currentL,currentR;
-  // 2) Minimal: T=front,left,right;
-  // 3) Gyro:    T=front,left,right,yaw;
   if (normalized.startsWith("T=")) {
-    const payload = normalized.slice(2);
+    const payload = normalized.replace(/;$/, "").slice(2);
     const fields = payload.split(",");
 
-    if (fields.length < 3) {
+    if (fields.length < 4) {
       return null;
     }
 
+    // New simple firmware format:
+    // T=mode,front,left,right,yaw,cmdL,cmdR,servoB,servoU,servoG,ledRx,ledMode,diag;
+    if (fields.length >= 13) {
+      const mode = (fields[0] ?? "0") === "1" ? "AUTO" : "MANUAL";
+
+      return {
+        mode,
+        stateCode: 0,
+        frontCm: toNumber(fields[1] ?? "0"),
+        leftCm: toNumber(fields[2] ?? "0"),
+        rightCm: toNumber(fields[3] ?? "0"),
+        servo1: toNumber(fields[7] ?? "0"),
+        servo2: toNumber(fields[8] ?? "0"),
+        servo3: toNumber(fields[9] ?? "0"),
+        yawDeg: toNumber(fields[4] ?? "0"),
+        ledRx: toNumber(fields[10] ?? "0") === 1,
+        ledMode: toNumber(fields[11] ?? "0") === 1,
+        diagCode: toNumber(fields[12] ?? "0"),
+        stopLatched: false,
+      };
+    }
+
+    // Compatibility fallback: T=front,left,right,yaw;
     if (fields.length === 4) {
       return {
         mode: "MANUAL",
-        // -1 marks telemetry frames that do not carry mode/motor fields.
         stateCode: -1,
         frontCm: toNumber(fields[0] ?? "0"),
         leftCm: toNumber(fields[1] ?? "0"),
@@ -93,40 +128,14 @@ export function parseTelemetryFrame(frame: string): Telemetry | null {
         servo2: 0,
         servo3: 0,
         yawDeg: toNumber(fields[3] ?? "0"),
+        ledRx: false,
+        ledMode: false,
+        diagCode: 0,
         stopLatched: false,
       };
     }
 
-    if (fields.length < 6) {
-      return {
-        mode: "MANUAL",
-        stateCode: -1,
-        frontCm: toNumber(fields[0] ?? "0"),
-        leftCm: toNumber(fields[1] ?? "0"),
-        rightCm: toNumber(fields[2] ?? "0"),
-        servo1: 0,
-        servo2: 0,
-        servo3: 0,
-        yawDeg: 0,
-        stopLatched: false,
-      };
-    }
-
-    const modeField = fields[3] ?? "M";
-    const mode = modeField === "A" || modeField === "AUTO" ? "AUTO" : "MANUAL";
-
-    return {
-      mode,
-      stateCode: 0,
-      frontCm: toNumber(fields[0] ?? "0"),
-      leftCm: toNumber(fields[1] ?? "0"),
-      rightCm: toNumber(fields[2] ?? "0"),
-      servo1: 0,
-      servo2: 0,
-      servo3: 0,
-      yawDeg: 0,
-      stopLatched: false,
-    };
+    return null;
   }
 
   // Legacy parser fallback retained for compatibility with older test frames.
@@ -152,6 +161,9 @@ export function parseTelemetryFrame(frame: string): Telemetry | null {
     servo2: toNumber(fields[8] ?? "0"),
     servo3: toNumber(fields[9] ?? "0"),
     yawDeg: 0,
+    ledRx: false,
+    ledMode: false,
+    diagCode: 0,
     stopLatched: toNumber(fields[10] ?? "0") === 1,
   };
 }

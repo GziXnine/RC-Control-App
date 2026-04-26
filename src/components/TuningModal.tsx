@@ -30,7 +30,7 @@ interface TuningModalProps {
   onResetDefaults: () => void;
 }
 
-type TabKey = "DRIVE" | "SERVO" | "CORE" | "ADV";
+type TabKey = "DRIVE" | "SERVO" | "MANUAL" | "AUTO" | "TURN";
 
 interface AutoControlSpec {
   key: string;
@@ -39,23 +39,25 @@ interface AutoControlSpec {
   label: string;
 }
 
-const AUTO_MAIN: AutoControlSpec[] = FIRMWARE_TUNING_SPECS
-  .filter((item) => item.section === "CORE")
-  .map((item) => ({
-    key: item.key,
-    min: item.min,
-    max: item.max,
-    label: item.label,
-  }));
+const ORDERED_KEYS: Record<TabKey, string[]> = {
+  DRIVE: [],
+  SERVO: [],
+  MANUAL: ["MLT", "MRT"],
+  AUTO: ["TH", "MG", "AFL", "AFR"],
+  TURN: ["TPL", "TPR", "KP", "DB", "TOL", "TTO", "F45", "CALN"],
+};
 
-const AUTO_ADVANCED: AutoControlSpec[] = FIRMWARE_TUNING_SPECS
-  .filter((item) => item.section === "ADVANCED")
-  .map((item) => ({
-    key: item.key,
-    min: item.min,
-    max: item.max,
-    label: item.label,
-  }));
+function buildSpecsByKeys(keys: string[]): AutoControlSpec[] {
+  return keys
+    .map((key) => FIRMWARE_TUNING_SPECS.find((item) => item.key === key))
+    .filter((item): item is (typeof FIRMWARE_TUNING_SPECS)[number] => Boolean(item))
+    .map((item) => ({
+      key: item.key,
+      min: item.min,
+      max: item.max,
+      label: item.label,
+    }));
+}
 
 export function TuningModal({
   visible,
@@ -71,11 +73,11 @@ export function TuningModal({
   onSaveProfile,
   onResetDefaults
 }: TuningModalProps): React.JSX.Element {
-  const [activeTab, setActiveTab] = useState<TabKey>("DRIVE");
+  const [activeTab, setActiveTab] = useState<TabKey>("AUTO");
   const [sliderDragging, setSliderDragging] = useState(false);
   const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
 
-  const tabButtons: TabKey[] = ["DRIVE", "SERVO", "CORE", "ADV"];
+  const tabButtons: TabKey[] = ["DRIVE", "SERVO", "MANUAL", "AUTO", "TURN"];
   const controlItemStyle = useMemo(() => {
     if (viewportWidth >= 1040) {
       return styles.controlItem25;
@@ -94,19 +96,19 @@ export function TuningModal({
   const rangePairs = useMemo(
     () => [
       {
-        label: "SERVO 1 RANGE",
+        label: "BASE RANGE",
         low: limits.s1Min,
         high: limits.s1Max,
         update: (low: number, high: number) => onLimitsChange({ s1Min: low, s1Max: high })
       },
       {
-        label: "SERVO 2 RANGE",
+        label: "UPPER RANGE",
         low: limits.s2Min,
         high: limits.s2Max,
         update: (low: number, high: number) => onLimitsChange({ s2Min: low, s2Max: high })
       },
       {
-        label: "SERVO 3 RANGE",
+        label: "GRIPPER RANGE",
         low: limits.s3Min,
         high: limits.s3Max,
         update: (low: number, high: number) => onLimitsChange({ s3Min: low, s3Max: high })
@@ -221,19 +223,15 @@ export function TuningModal({
   };
 
   const renderBody = (): React.JSX.Element => {
-    if (activeTab === "DRIVE") {
-      return renderDriveTab();
-    }
-
     if (activeTab === "SERVO") {
       return renderServoTab();
     }
 
-    if (activeTab === "CORE") {
-      return renderAutoControls(AUTO_MAIN);
+    if (activeTab === "DRIVE") {
+      return renderDriveTab();
     }
 
-    return renderAutoControls(AUTO_ADVANCED);
+    return renderAutoControls(buildSpecsByKeys(ORDERED_KEYS[activeTab]));
   };
 
   return (

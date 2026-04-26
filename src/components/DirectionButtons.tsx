@@ -4,20 +4,18 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { palette } from "../theme/palette";
 
 interface DirectionButtonsProps {
-  onTurn: (direction: "LEFT" | "RIGHT") => void;
-  onMoveStart: (direction: "UP" | "DOWN") => void;
+  onMoveStart: (direction: "UP" | "DOWN" | "LEFT" | "RIGHT") => void;
   onMoveStop: () => void;
 }
 
 export function DirectionButtons({
-  onTurn,
   onMoveStart,
   onMoveStop,
 }: DirectionButtonsProps): React.JSX.Element {
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
-        <Text style={styles.label}>GYRO MODE</Text>
+        <Text style={styles.label}>BUTTONS MODE</Text>
         <View style={styles.liveDot} />
       </View>
 
@@ -45,7 +43,8 @@ export function DirectionButtons({
             styles.leftButton,
             pressed && styles.directionButtonPressed
           ]}
-          onPress={() => onTurn("LEFT")}
+          onPressIn={() => onMoveStart("LEFT")}
+          onPressOut={onMoveStop}
         >
           <Text style={styles.directionText}>◀</Text>
         </Pressable>
@@ -56,7 +55,8 @@ export function DirectionButtons({
             styles.rightButton,
             pressed && styles.directionButtonPressed
           ]}
-          onPress={() => onTurn("RIGHT")}
+          onPressIn={() => onMoveStart("RIGHT")}
+          onPressOut={onMoveStop}
         >
           <Text style={styles.directionText}>▶</Text>
         </Pressable>
