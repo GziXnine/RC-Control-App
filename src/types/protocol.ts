@@ -2,7 +2,14 @@
 
 export type RobotMode = "MANUAL" | "AUTO";
 
-export type PriorityClass = "STOP" | "MODE" | "MOTOR" | "SERVO" | "TUNING";
+export type PriorityClass =
+  | "STOP"
+  | "MODE"
+  | "GYRO"
+  | "TURN"
+  | "MOTOR"
+  | "SERVO"
+  | "TUNING";
 
 export interface MotorCommand {
   left: number;
@@ -13,8 +20,9 @@ export interface DriveTuning {
   max: number;
   dead: number;
   acc: number;
-  turn: number;
+  stickXGain: number;
   servoStep: number;
+  stickFlipX: number;
 }
 
 export interface ServoState {

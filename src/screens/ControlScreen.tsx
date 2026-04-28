@@ -20,18 +20,18 @@ export function ControlScreen(): React.JSX.Element {
         <TopBar
           mode={controller.mode}
           stopLatched={controller.stopLatched}
-          gyroEnabled={controller.gyroEnabled}
+          buttonsMode={controller.buttonsMode}
           bluetoothLabel={controller.bluetoothLabel}
           onBluetoothPress={controller.openBluetooth}
           onTuningPress={controller.openTuning}
           onToggleMode={controller.toggleMode}
-          onToggleGyro={controller.toggleGyro}
+          onToggleButtonsMode={controller.toggleButtonsMode}
           onStopPress={controller.sendStop}
         />
 
         <View style={styles.mainPanel}>
           <View style={styles.leftColumn}>
-            {controller.gyroEnabled ? (
+            {controller.buttonsMode ? (
               <DirectionButtons
                 onMoveStart={controller.startDirectionalMove}
                 onMoveStop={controller.stopDirectionalMove}

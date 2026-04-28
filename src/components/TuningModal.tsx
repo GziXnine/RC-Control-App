@@ -30,7 +30,7 @@ interface TuningModalProps {
   onResetDefaults: () => void;
 }
 
-type TabKey = "DRIVE" | "SERVO" | "MANUAL" | "AUTO" | "TURN";
+type TabKey = "DRIVE" | "SERVO" | "MANUAL" | "AUTO" | "TURN" | "SENSOR";
 
 interface AutoControlSpec {
   key: string;
@@ -43,8 +43,9 @@ const ORDERED_KEYS: Record<TabKey, string[]> = {
   DRIVE: [],
   SERVO: [],
   MANUAL: ["MLT", "MRT"],
-  AUTO: ["TH", "MG", "AFL", "AFR"],
+  AUTO: ["TH", "MG", "SOM", "AFL", "AFR"],
   TURN: ["TPL", "TPR", "KP", "DB", "TOL", "TTO", "F45", "CALN"],
+  SENSOR: ["SJMP", "SPRD", "TPER"],
 };
 
 function buildSpecsByKeys(keys: string[]): AutoControlSpec[] {
@@ -77,7 +78,7 @@ export function TuningModal({
   const [sliderDragging, setSliderDragging] = useState(false);
   const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
 
-  const tabButtons: TabKey[] = ["DRIVE", "SERVO", "MANUAL", "AUTO", "TURN"];
+  const tabButtons: TabKey[] = ["DRIVE", "SERVO", "MANUAL", "AUTO", "TURN", "SENSOR"];
   const controlItemStyle = useMemo(() => {
     if (viewportWidth >= 1040) {
       return styles.controlItem25;
@@ -154,11 +155,22 @@ export function TuningModal({
           style={controlItemStyle}
         />
         <RetroSlider
-          label="TURN"
-          value={drive.turn}
+          label="STICK X GAIN"
+          value={drive.stickXGain}
           min={40}
           max={180}
-          onChange={(value) => onDriveChange({ turn: value })}
+          onChange={(value) => onDriveChange({ stickXGain: value })}
+          onDragStateChange={setSliderDragging}
+          variant="flat"
+          valuePlacement="header"
+          style={controlItemStyle}
+        />
+        <RetroSlider
+          label="STICK X FLIP"
+          value={drive.stickFlipX}
+          min={0}
+          max={1}
+          onChange={(value) => onDriveChange({ stickFlipX: value })}
           onDragStateChange={setSliderDragging}
           variant="flat"
           valuePlacement="header"

@@ -47,20 +47,17 @@ export function joystickToDifferential(
   tuning: DriveTuning,
   previous: MotorCommand,
 ): MotorCommand {
-  const normalizedX = clamp(x, -1, 1);
+  const flipX = tuning.stickFlipX > 0 ? -1 : 1;
+  const normalizedX = clamp(x * flipX, -1, 1);
   const normalizedY = clamp(y, -1, 1);
   const deadZoneRatio = clamp(tuning.dead / 255, 0, 0.5);
 
   const xShaped = shape(applyDeadZone(normalizedX, deadZoneRatio));
   const yShaped = shape(applyDeadZone(normalizedY, deadZoneRatio));
 
-  const turnScale = clamp(tuning.turn / 100, 0.4, 1.8);
-  let leftNorm = yShaped + xShaped * turnScale;
-  let rightNorm = yShaped - xShaped * turnScale;
-
-  const maxAbs = Math.max(1, Math.abs(leftNorm), Math.abs(rightNorm));
-  leftNorm /= maxAbs;
-  rightNorm /= maxAbs;
+  const stickXGain = clamp(tuning.stickXGain / 100, 0.4, 1.8);
+  const leftNorm = clamp(yShaped, -1, 1);
+  const rightNorm = clamp(xShaped * stickXGain, -1, 1);
 
   const maxPwm = clamp(Math.round(tuning.max), 60, 255);
   const targetLeft = Math.round(leftNorm * maxPwm);

@@ -13,6 +13,10 @@ export type FirmwareTuningKey =
   | "CALN"
   | "TH"
   | "MG"
+  | "SOM"
+  | "SJMP"
+  | "SPRD"
+  | "TPER"
   | "MLT"
   | "MRT";
 
@@ -104,6 +108,14 @@ export const FIRMWARE_TUNING_SPECS: ReadonlyArray<FirmwareTuningSpec> = [
     section: "CORE",
   },
   {
+    key: "SOM",
+    label: "SIDE OPEN MIN",
+    min: 6,
+    max: 80,
+    defaultValue: 12,
+    section: "CORE",
+  },
+  {
     key: "MLT",
     label: "MANUAL TRIM L",
     min: -60,
@@ -141,6 +153,30 @@ export const FIRMWARE_TUNING_SPECS: ReadonlyArray<FirmwareTuningSpec> = [
     min: 1,
     max: 3,
     defaultValue: 2,
+    section: "ADVANCED",
+  },
+  {
+    key: "SJMP",
+    label: "SENSOR JUMP",
+    min: 8,
+    max: 80,
+    defaultValue: 28,
+    section: "ADVANCED",
+  },
+  {
+    key: "SPRD",
+    label: "SENSOR PERIOD",
+    min: 50,
+    max: 250,
+    defaultValue: 90,
+    section: "ADVANCED",
+  },
+  {
+    key: "TPER",
+    label: "TELEM PERIOD",
+    min: 120,
+    max: 1000,
+    defaultValue: 260,
     section: "ADVANCED",
   },
 ];

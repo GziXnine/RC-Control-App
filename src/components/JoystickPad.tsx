@@ -62,7 +62,7 @@ export function JoystickPad({ onMove, onRelease }: JoystickPadProps): React.JSX.
 
       const point = latestStickRef.current;
       onMoveRef.current(point.x, point.y);
-    }, 20);
+    }, 50);
   };
 
   useEffect(() => {

@@ -70,7 +70,14 @@ async function testProtocolFrames(): Promise<void> {
 }
 
 async function testJoystickMath(): Promise<void> {
-  const tuning = { max: 210, dead: 8, acc: 8, turn: 100, servoStep: 2 };
+  const tuning = {
+    max: 210,
+    dead: 8,
+    acc: 8,
+    stickXGain: 100,
+    servoStep: 2,
+    stickFlipX: 0,
+  };
 
   const center = joystickToDifferential(0, 0, tuning, neutralMotor());
   assert.equal(center.left, 0);
@@ -78,15 +85,24 @@ async function testJoystickMath(): Promise<void> {
 
   const forward = joystickToDifferential(0, 1, tuning, neutralMotor());
   assert.ok(forward.left > 0);
-  assert.equal(forward.left, forward.right);
+  assert.equal(forward.right, 0);
 
-  const rightTurn = joystickToDifferential(1, 0, tuning, neutralMotor());
-  assert.ok(rightTurn.left > 0);
-  assert.ok(rightTurn.right < 0);
+  const rightAxis = joystickToDifferential(1, 0, tuning, neutralMotor());
+  assert.equal(rightAxis.left, 0);
+  assert.ok(rightAxis.right > 0);
+
+  const flippedRight = joystickToDifferential(
+    1,
+    0,
+    { ...tuning, stickFlipX: 1 },
+    neutralMotor(),
+  );
+  assert.equal(flippedRight.left, 0);
+  assert.ok(flippedRight.right < 0);
 
   const limited = joystickToDifferential(0, 1, tuning, { left: 0, right: 0 });
   assert.ok(limited.left <= 12);
-  assert.ok(limited.right <= 12);
+  assert.equal(limited.right, 0);
 }
 
 async function testQueueWithoutAck(): Promise<void> {
@@ -109,6 +125,31 @@ async function testQueueWithoutAck(): Promise<void> {
   await wait(70);
   assert.ok(sent.includes("A=1;"));
   assert.ok(sent.some((frame) => frame.startsWith("M=")));
+  assert.equal(engine.getQueueSize(), 0);
+  engine.stop();
+}
+
+async function testTurnQueue(): Promise<void> {
+  const sent: string[] = [];
+
+  const engine = new PriorityCommandEngine(
+    async (frame) => {
+      sent.push(frame);
+      return true;
+    },
+    {
+      periodMs: 10,
+    },
+  );
+
+  engine.start();
+  engine.queueGyroAssist(true);
+  engine.queueTurn("LEFT");
+
+  await wait(60);
+
+  assert.ok(sent.includes("G=1;"));
+  assert.ok(sent.includes("TRN=-1;"));
   assert.equal(engine.getQueueSize(), 0);
   engine.stop();
 }
@@ -300,6 +341,7 @@ async function run(): Promise<void> {
     { name: "protocol frames", run: testProtocolFrames },
     { name: "joystick mapping", run: testJoystickMath },
     { name: "queue without ack", run: testQueueWithoutAck },
+    { name: "turn queue", run: testTurnQueue },
     { name: "priority fairness", run: testPriorityFairness },
     { name: "tuning throttle", run: testTuningThrottle },
     { name: "tuning retry after drop", run: testTuningRetryAfterDrop },

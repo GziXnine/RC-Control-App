@@ -1,11 +1,13 @@
 /** @format */
 
 import {
+  buildGyroAssistFrame,
   buildModeFrame,
   buildMotorFrame,
   buildServoFrame,
   buildStopFrame,
   buildTuningFrame,
+  buildTurnFrame,
 } from "../protocol/frames";
 import { MotorCommand, PriorityClass, RobotMode } from "../types/protocol";
 
@@ -24,6 +26,8 @@ interface EngineOptions {
 interface PendingState {
   stop: boolean;
   modeQueue: RobotMode[];
+  gyroAssist: boolean | null;
+  turnQueue: Array<"LEFT" | "RIGHT">;
   motor: MotorCommand | null;
   motorStream: boolean;
   servo: Map<1 | 2 | 3, number>;
@@ -33,6 +37,7 @@ interface PendingState {
 
 interface LastCommittedState {
   mode: RobotMode | null;
+  gyroAssist: boolean | null;
   motor: string;
   servo: Map<1 | 2 | 3, number>;
   tuning: Map<string, number>;
@@ -66,6 +71,8 @@ export class PriorityCommandEngine {
   private pending: PendingState = {
     stop: false,
     modeQueue: [],
+    gyroAssist: null,
+    turnQueue: [],
     motor: null,
     motorStream: false,
     servo: new Map(),
@@ -75,6 +82,7 @@ export class PriorityCommandEngine {
 
   private lastCommitted: LastCommittedState = {
     mode: null,
+    gyroAssist: null,
     motor: buildMotorFrame({ left: 0, right: 0 }),
     servo: new Map(),
     tuning: new Map(),
@@ -124,6 +132,15 @@ export class PriorityCommandEngine {
     }
   }
 
+  queueGyroAssist(enabled: boolean): void {
+    this.pending.gyroAssist = enabled;
+  }
+
+  queueTurn(direction: "LEFT" | "RIGHT"): void {
+    this.pending.turnQueue.push(direction);
+    this.nextMotorAtMs = 0;
+  }
+
   queueMotor(command: MotorCommand, options?: { stream?: boolean }): void {
     this.pending.motor = {
       left: Math.round(command.left),
@@ -152,6 +169,8 @@ export class PriorityCommandEngine {
   clearPending(): void {
     this.pending.stop = false;
     this.pending.modeQueue = [];
+    this.pending.gyroAssist = null;
+    this.pending.turnQueue = [];
     this.pending.motor = null;
     this.pending.motorStream = false;
     this.pending.servo.clear();
@@ -164,6 +183,8 @@ export class PriorityCommandEngine {
     return (
       (this.pending.stop ? 1 : 0) +
       this.pending.modeQueue.length +
+      (this.pending.gyroAssist !== null ? 1 : 0) +
+      this.pending.turnQueue.length +
       (this.pending.motor ? 1 : 0) +
       this.pending.servo.size +
       this.pending.tuning.size
@@ -239,11 +260,61 @@ export class PriorityCommandEngine {
       };
     }
 
+    if (this.pending.gyroAssist !== null) {
+      const desired = this.pending.gyroAssist;
+      if (this.lastCommitted.gyroAssist === desired) {
+        this.pending.gyroAssist = null;
+      } else {
+        return {
+          kind: "GYRO",
+          frame: buildGyroAssistFrame(desired),
+          onCommit: () => {
+            this.lastCommitted.gyroAssist = desired;
+            if (this.pending.gyroAssist === desired) {
+              this.pending.gyroAssist = null;
+            }
+          },
+        };
+      }
+    }
+
     const motorFrame = this.peekMotorFrame();
+        const turnFrame = this.peekTurnFrame();
     const servoFrame = this.peekServoFrame();
     const tuningFrame = this.peekTuningFrame();
 
     const motorReady = motorFrame !== null && now >= this.nextMotorAtMs;
+
+        if (turnFrame !== null && motorReady && motorFrame !== null) {
+          return {
+            kind: "MOTOR",
+            frame: motorFrame.frame,
+            onCommit: () => {
+              this.lastCommitted.motor = motorFrame.frame;
+              if (
+                !this.pending.motorStream &&
+                this.pending.motor &&
+                this.pending.motor.left === motorFrame.left &&
+                this.pending.motor.right === motorFrame.right
+              ) {
+                this.pending.motor = null;
+              }
+              this.nextMotorAtMs = Date.now() + MOTOR_INTERVAL_MS;
+            },
+          };
+        }
+
+        if (turnFrame !== null) {
+          return {
+            kind: "TURN",
+            frame: turnFrame.frame,
+            onCommit: () => {
+              if (this.pending.turnQueue[0] === turnFrame.direction) {
+                this.pending.turnQueue.shift();
+              }
+            },
+          };
+        }
     const servoReady = servoFrame !== null && now >= this.nextServoAtMs;
     const tuningReady = tuningFrame !== null && now >= this.nextTuningAtMs;
 
@@ -418,6 +489,21 @@ export class PriorityCommandEngine {
     }
 
     return null;
+  }
+
+  private peekTurnFrame(): {
+    frame: string;
+    direction: "LEFT" | "RIGHT";
+  } | null {
+    const direction = this.pending.turnQueue[0];
+    if (!direction) {
+      return null;
+    }
+
+    return {
+      frame: buildTurnFrame(direction),
+      direction,
+    };
   }
 
   private removeTuningOrderKey(key: string): void {
