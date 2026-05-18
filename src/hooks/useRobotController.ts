@@ -34,9 +34,8 @@ const DEFAULT_DRIVE: DriveTuning = {
   max: 255,
   dead: 8,
   acc: 12,
-  stickXGain: 100,
+  turn: 100,
   servoStep: 4,
-  stickFlipX: 1,
 };
 
 const DEFAULT_LIMITS: TuningLimits = {
@@ -116,11 +115,11 @@ function toFiniteNumber(input: unknown, fallback: number): number {
 
 function sanitizeDrive(input?: Partial<DriveTuning>): DriveTuning {
   const source = input ?? {};
-  const legacyTurn = toFiniteNumber(
-    (source as { turn?: number }).turn,
-    DEFAULT_DRIVE.stickXGain,
+  const legacyStickXGain = toFiniteNumber(
+    (source as { stickXGain?: number }).stickXGain,
+    DEFAULT_DRIVE.turn,
   );
-  const stickXGainValue = toFiniteNumber(source.stickXGain, legacyTurn);
+  const turnValue = toFiniteNumber(source.turn, legacyStickXGain);
 
   return {
     max: clampInt(
@@ -138,16 +137,11 @@ function sanitizeDrive(input?: Partial<DriveTuning>): DriveTuning {
       1,
       40,
     ),
-    stickXGain: clampInt(Math.round(stickXGainValue), 40, 180),
+    turn: clampInt(Math.round(turnValue), 40, 180),
     servoStep: clampInt(
       Math.round(toFiniteNumber(source.servoStep, DEFAULT_DRIVE.servoStep)),
       1,
       12,
-    ),
-    stickFlipX: clampInt(
-      Math.round(toFiniteNumber(source.stickFlipX, DEFAULT_DRIVE.stickFlipX)),
-      0,
-      1,
     ),
   };
 }
@@ -1204,9 +1198,8 @@ export function useRobotController() {
           next.max !== previous.max ||
           next.acc !== previous.acc ||
           next.dead !== previous.dead ||
-          next.stickXGain !== previous.stickXGain ||
-          next.servoStep !== previous.servoStep ||
-          next.stickFlipX !== previous.stickFlipX
+          next.turn !== previous.turn ||
+          next.servoStep !== previous.servoStep
         ) {
           setTuningStatus("LIVE UNSAVED");
         }

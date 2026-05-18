@@ -20,9 +20,8 @@ export interface DriveTuning {
   max: number;
   dead: number;
   acc: number;
-  stickXGain: number;
+  turn: number;
   servoStep: number;
-  stickFlipX: number;
 }
 
 export interface ServoState {

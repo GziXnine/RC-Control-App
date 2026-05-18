@@ -74,7 +74,7 @@ export function TuningModal({
   onSaveProfile,
   onResetDefaults
 }: TuningModalProps): React.JSX.Element {
-  const [activeTab, setActiveTab] = useState<TabKey>("AUTO");
+  const [activeTab, setActiveTab] = useState<TabKey>("DRIVE");
   const [sliderDragging, setSliderDragging] = useState(false);
   const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
 
@@ -155,22 +155,11 @@ export function TuningModal({
           style={controlItemStyle}
         />
         <RetroSlider
-          label="STICK X GAIN"
-          value={drive.stickXGain}
+          label="TURN GAIN"
+          value={drive.turn}
           min={40}
           max={180}
-          onChange={(value) => onDriveChange({ stickXGain: value })}
-          onDragStateChange={setSliderDragging}
-          variant="flat"
-          valuePlacement="header"
-          style={controlItemStyle}
-        />
-        <RetroSlider
-          label="STICK X FLIP"
-          value={drive.stickFlipX}
-          min={0}
-          max={1}
-          onChange={(value) => onDriveChange({ stickFlipX: value })}
+          onChange={(value) => onDriveChange({ turn: value })}
           onDragStateChange={setSliderDragging}
           variant="flat"
           valuePlacement="header"
