@@ -68,23 +68,23 @@ Create a folder named `Photos` and add your screenshots using the placeholders b
 
 <table>
   <tr>
-    <td><img src="Photos/photo-01.jpg" alt="Photo 01" width="420" /></td>
-    <td><img src="Photos/photo-02.jpg" alt="Photo 02" width="420" /></td>
+    <td><img src="Photos/Photo-01.jpg" alt="Photo 01" width="420" /></td>
+    <td><img src="Photos/Photo-02.jpg" alt="Photo 02" width="420" /></td>
   </tr>
   <tr>
-    <td><img src="Photos/photo-03.jpg" alt="Photo 03" width="420" /></td>
-    <td><img src="Photos/photo-04.jpg" alt="Photo 04" width="420" /></td>
+    <td><img src="Photos/Photo-03.jpg" alt="Photo 03" width="420" /></td>
+    <td><img src="Photos/Photo-04.jpg" alt="Photo 04" width="420" /></td>
   </tr>
   <tr>
-    <td><img src="Photos/photo-05.jpg" alt="Photo 05" width="420" /></td>
-    <td><img src="Photos/photo-06.jpg" alt="Photo 06" width="420" /></td>
+    <td><img src="Photos/Photo-05.jpg" alt="Photo 05" width="420" /></td>
+    <td><img src="Photos/Photo-06.jpg" alt="Photo 06" width="420" /></td>
   </tr>
   <tr>
-    <td><img src="Photos/photo-07.jpg" alt="Photo 07" width="420" /></td>
-    <td><img src="Photos/photo-08.jpg" alt="Photo 08" width="420" /></td>
+    <td><img src="Photos/Photo-07.jpg" alt="Photo 07" width="420" /></td>
+    <td><img src="Photos/Photo-08.jpg" alt="Photo 08" width="420" /></td>
   </tr>
   <tr>
-    <td><img src="Photos/photo-09.jpg" alt="Photo 08" width="420" /></td>
+    <td><img src="Photos/Photo-09.jpg" alt="Photo 09" width="420" /></td>
   </tr>
 </table>
 
